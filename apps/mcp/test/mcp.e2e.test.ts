@@ -38,7 +38,8 @@ d("MCP server end to end (mocks chain)", () => {
   let client: Client;
   let stop: () => void;
   let mandateId: bigint;
-  const dep = parseDeployment(JSON.parse(readFileSync(DEPLOYMENT, "utf8")));
+  // a skipped suite's body still runs at collection, so the file is only read when it is there
+  const dep = up ? parseDeployment(JSON.parse(readFileSync(DEPLOYMENT, "utf8"))) : (null as never);
   const pub = createPublicClient({ chain: localMocks, transport: http(RPC) });
   const ownerWallet = createWalletClient({ account: owner, chain: localMocks, transport: http(RPC) });
   const call = async (name: string, args: Record<string, unknown> = {}) => {

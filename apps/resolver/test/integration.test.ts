@@ -1,5 +1,6 @@
 /**
- * End-to-end against a local anvil with mocks (`pnpm mocks:up`, chain 1337). Skipped when the chain is not up.
+ * End-to-end against a local anvil with mocks (`pnpm mocks:up`, chain 1337). Skipped when the chain is not up
+ * or has no deployment recorded on this machine.
  * Covers: resolve buy -> execute -> receipt indexed -> quote record; sell; basket mint / redeem / in-kind; budget
  * sizing in 6-decimal USDG. The mocks are one issuer per stock, as Robinhood Chain is, so the cross-issuer paths
  * (issuer caps, migrations) are covered by the unit tests rather than here.
@@ -8,7 +9,9 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createWalletClient, createPublicClient, http, type Address, type Hex, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { localMocks, Erc20Abi, WAD, USDG_UNIT } from "@parallax-hood/sdk";
-import { loadConfig } from "../src/config.js";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { loadConfig, REPO_ROOT } from "../src/config.js";
 import { createApp, createServices, type Services } from "../src/app.js";
 
 const RPC = "http://127.0.0.1:8648";
@@ -24,7 +27,7 @@ async function chainUp() {
   }
 }
 
-const up = await chainUp();
+const up = existsSync(resolve(REPO_ROOT, "contracts/deployments/1337.json")) && (await chainUp());
 const d = up ? describe : describe.skip;
 
 d("resolver integration (local mocks chain)", () => {

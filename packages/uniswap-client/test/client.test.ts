@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { createPublicClient, defineChain, http, type Address, type PublicClient, zeroAddress } from "viem";
 import { UniswapV3Client, ROBINHOOD_UNISWAP_V3, encodePath, reversePath, routeLabel } from "../src/index.js";
 
@@ -116,14 +116,18 @@ describe("UniswapV3Client", () => {
 
 /** Against the real chain. Set ROBINHOOD_RPC_URL (the public endpoint works) to run it. */
 describe.skipIf(!process.env.ROBINHOOD_RPC_URL)("Robinhood Chain mainnet (live)", () => {
-  // multicall batching keeps a public endpoint's rate limit out of the way
-  const chain = defineChain({
-    id: 4663, name: "Robinhood Chain", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-    rpcUrls: { default: { http: [process.env.ROBINHOOD_RPC_URL ?? ""] } },
-    contracts: { multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" } },
+  // built in beforeAll: a skipped suite's body still runs at collection, and a transport without a URL throws
+  let u: UniswapV3Client;
+  beforeAll(() => {
+    // multicall batching keeps a public endpoint's rate limit out of the way
+    const chain = defineChain({
+      id: 4663, name: "Robinhood Chain", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+      rpcUrls: { default: { http: [process.env.ROBINHOOD_RPC_URL!] } },
+      contracts: { multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" } },
+    });
+    const client = createPublicClient({ chain, transport: http(undefined, { retryCount: 5, retryDelay: 500 }), batch: { multicall: { wait: 16 } } });
+    u = new UniswapV3Client({ client, deployment: ROBINHOOD_UNISWAP_V3, minPoolBalance: { [USDG]: 1_000n * 10n ** 6n } });
   });
-  const client = createPublicClient({ chain, transport: http(undefined, { retryCount: 5, retryDelay: 500 }), batch: { multicall: { wait: 16 } } });
-  const u = new UniswapV3Client({ client, deployment: ROBINHOOD_UNISWAP_V3, minPoolBalance: { [USDG]: 1_000n * 10n ** 6n } });
 
   it("quotes 100 USDG into NVDA and back within a few percent", async () => {
     const buy = await u.bestExactInput(USDG, NVDA, 100n * 10n ** 6n, [WETH]);
