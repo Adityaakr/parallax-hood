@@ -25,7 +25,7 @@ export const LEGALS: Record<string, { title: string; pageTitle: string; body: st
     pageTitle: "Parallax - Terms of Service",
     body: [
       UPDATED,
-      "<p><strong>1. What you are using</strong> Parallax on Robinhood Chain is unaudited software, built for the Arbitrum Open House Singapore buildathon. Use it at your own risk. It runs on Robinhood Chain Testnet with mock tokens and against a fork of mainnet with the real ones. It is not deployed on Robinhood Chain mainnet; that deployment is pending.</p>",
+      "<p><strong>1. What you are using</strong> Parallax on Robinhood Chain is unaudited software, built for the Arbitrum Open House Singapore buildathon. Use it at your own risk. It has been run on a local chain with mock tokens and against a fork of Robinhood Chain mainnet with the real ones; it is not deployed to a public network yet. It is not deployed on Robinhood Chain mainnet; that deployment is pending.</p>",
       "<p id=\"eligibility\"><strong>2. Eligibility</strong> Parallax is not available to U.S. persons. The issuer of the stock tokens states: \"" + ISSUER_QUOTE + "\" (source: <a href=\"https://docs.robinhood.com/chain/stock-tokens\">docs.robinhood.com/chain/stock-tokens</a>). You are responsible for knowing whether you may hold these tokens where you live.</p>",
       "<p><strong>3. No affiliation</strong> " + NOT_AFFILIATED + "</p>",
       "<p><strong>4. Not investment advice</strong> Nothing on this site or in the app is investment advice, and nothing here is an offer to sell securities. Index definitions and prices are shown for information only.</p>",

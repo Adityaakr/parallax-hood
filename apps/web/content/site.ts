@@ -13,7 +13,7 @@ export const NOT_AFFILIATED = "Parallax is an independent project and is not aff
 
 export const META = {
   title: "Parallax on Robinhood Chain",
-  description: "A token is not a share. Parallax measures Robinhood stock tokens in underlying shares: USDG index vaults, agent mandates enforced on chain, and execution priced per share. It runs on Robinhood Chain Testnet and against a fork of mainnet; mainnet deployment is pending. Unaudited. Not available to U.S. persons.",
+  description: "A token is not a share. Parallax measures Robinhood stock tokens in underlying shares: USDG index vaults, agent mandates enforced on chain, and execution priced per share. Tested against a fork of Robinhood Chain mainnet; public deployment is pending. Unaudited. Not available to U.S. persons.",
 };
 
 export const NAV = {
@@ -31,7 +31,7 @@ export const NAV = {
 /** The footer's CTA repeats the home hero on every page. */
 export const CTA = {
   title: "Count the position in shares.",
-  text: "Mint an index with USDG, buy a single stock, or give an agent a mandate it cannot exceed. On Robinhood Chain Testnet today; mainnet deployment is pending.",
+  text: "Mint an index with USDG, buy a single stock, or give an agent a mandate it cannot exceed. Tested against a fork of Robinhood Chain mainnet; public deployment is pending.",
   primary: { label: "View the indices", href: "/baskets" },
   secondary: { label: "Search a stock", href: "/stocks" },
 };
@@ -66,7 +66,7 @@ export const FAQS = {
   text: "What to know before trusting a contract with an order, including the answers that are not flattering.",
   cta: { title: "More questions?", text: "The repository has the rest.", button: { label: "Read the docs", href: `${REPO}#readme` } },
   items: [
-    { q: "Is this live?", a: "Not on mainnet. The contracts run on Robinhood Chain Testnet (chain id 46630) with mock tokens, and against a fork of Robinhood Chain mainnet (chain id 4663) with the real tokens, feeds and pools. Mainnet deployment is pending. The code is unaudited." },
+    { q: "Is this live?", a: "No. Nothing is deployed to a public network yet. The contracts have been run on a local chain with mock tokens, and against a fork of Robinhood Chain mainnet (chain id 4663) with the real tokens, feeds and pools. The code is unaudited." },
     { q: "Why is a token not a share?", a: "A Robinhood stock token carries an on-chain multiplier, uiMultiplier() under ERC-8056. It grows with reinvested dividends and changes on splits, so the number of tokens you hold is not the number of shares you own. Parallax converts every quantity to underlying shares before it compares, bounds or records anything." },
     { q: "What does an index unit hold?", a: "A fixed number of underlying shares of each constituent, not a dollar weight that drifts with a manager. pxMAG7 holds the seven stocks at equal weight. pxAI holds NVDA at 40 % and MSFT, GOOGL and META at 20 % each. Each was sized to about 100 dollars a unit when configured. After every call the vault must hold at least units × sharesPerUnit of every constituent, or the call reverts." },
     { q: "How do I get out of an index?", a: "Redeem for USDG, or redeem in kind and receive the stock tokens themselves. In-kind redemption does not depend on any oracle, venue or pause that Parallax controls, and it carries no fee. It does depend on the issuer: a token that Robinhood has paused, or an address it has blocked, cannot move until the issuer lifts that." },
