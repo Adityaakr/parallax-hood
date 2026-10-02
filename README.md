@@ -43,7 +43,7 @@ Three things follow from that, and Parallax does each one on chain:
 | USDG | real, 6 decimals | **mock** (`MockUSDG`, 6 decimals) | fork: real, mocks chain: mock |
 | Swap venue | Uniswap v3 SwapRouter02 | **mock** (`MockSwapTarget`) | fork: real pools, mocks chain: mock |
 | Reference price | Chainlink feeds | **snapshot** of the mainnet feeds, posted once | fork: real feeds, mocks chain: snapshot |
-| Parallax contracts | not deployed (needs approval) | see Deployments | deployed by `pnpm mocks:up` / `pnpm fork:up` |
+| Parallax contracts | not deployed (needs approval) | deployed, addresses below | deployed by `pnpm mocks:up` / `pnpm fork:up` |
 
 The testnet has no Uniswap deployment and no Chainlink feeds, and five of the seven stocks do not exist there, so
 the testnet deployment cannot use real ones ([details](docs/addresses.md#7-testnet-what-exists-and-what-parallax-mocks)).
@@ -56,10 +56,26 @@ pools against the real feeds, and returns no transaction.
 
 ## Deployments
 
-| Network | Status |
+**Robinhood Chain Testnet (46630)**, deployed 2 October 2026. The stock tokens, USDG, venue and prices on this
+network are mocks.
+
+| Contract | Address |
 |---|---|
-| Robinhood Chain mainnet (4663) | Not deployed. Deployment waits for explicit approval of the plan in [docs/mainnet-plan.md](docs/mainnet-plan.md). |
-| Robinhood Chain Testnet (46630) | Not deployed yet: `pnpm testnet:up` needs a key funded with test ETH. Addresses will be recorded in `contracts/deployments/46630.json` and listed here. |
+| StockRegistry | [`0x5e3c867eCfC69eC76B1943E61BeE0D4CaA7ba68d`](https://explorer.testnet.chain.robinhood.com/address/0x5e3c867eCfC69eC76B1943E61BeE0D4CaA7ba68d) |
+| ShareRouter | [`0x9fE3E7Bff316E0F2e8e22d92f06A3D304A73b504`](https://explorer.testnet.chain.robinhood.com/address/0x9fE3E7Bff316E0F2e8e22d92f06A3D304A73b504) |
+| BasketFactory | [`0x63bF03A022aEA882fccb3648ac593D80Eb0EF084`](https://explorer.testnet.chain.robinhood.com/address/0x63bF03A022aEA882fccb3648ac593D80Eb0EF084) |
+| AgentMandate | [`0xa7dEe60CD687A6060e450cEb4f6aAed97134fef2`](https://explorer.testnet.chain.robinhood.com/address/0xa7dEe60CD687A6060e450cEb4f6aAed97134fef2) |
+| BasketVault pxMAG7 | [`0x77d091F1cb36c316BA99F3b96100b059b5f019b1`](https://explorer.testnet.chain.robinhood.com/address/0x77d091F1cb36c316BA99F3b96100b059b5f019b1) |
+| BasketVault pxAI | [`0x5bAC6815917f95f29eD4CAAAf034925DcC28D1Cb`](https://explorer.testnet.chain.robinhood.com/address/0x5bAC6815917f95f29eD4CAAAf034925DcC28D1Cb) |
+| MockUSDG (mock, 6 decimals) | [`0xB8d8898ED260aD81296a3DDD9F35AD1F4d0A0947`](https://explorer.testnet.chain.robinhood.com/address/0xB8d8898ED260aD81296a3DDD9F35AD1F4d0A0947) |
+| MockSwapTarget (mock venue) | [`0x490f35155a130992F667989818d10d39c31867BE`](https://explorer.testnet.chain.robinhood.com/address/0x490f35155a130992F667989818d10d39c31867BE) |
+
+The seven mock stock tokens, the settings read back from the chain and a full run with a transaction link for
+every step (buy, vault deposit, redemption to USDG and in kind, mandate, agent trades, five refusals including
+an on-chain revert, revocation) are in [docs/testnet-run.md](docs/testnet-run.md).
+
+**Robinhood Chain mainnet (4663)**: not deployed. It waits for explicit approval of the plan in
+[docs/mainnet-plan.md](docs/mainnet-plan.md).
 
 ## Run it locally (under ten minutes)
 
