@@ -1,0 +1,30 @@
+{
+  "name": "@parallax-hood/mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "parallax-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts --http",
+    "start": "node dist/index.js",
+    "start:http": "node dist/index.js --http",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@parallax-hood/sdk": "workspace:*",
+    "viem": "^2.21.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "@parallax-hood/resolver": "workspace:*",
+    "@hono/node-server": "^1.13.0"
+  }
+}
