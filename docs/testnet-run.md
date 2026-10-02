@@ -31,6 +31,10 @@ chain's EVM. It shows nothing about real liquidity; the fork test and the fork r
 | MockStockToken NVDA (mock) | [`0xcd31ACd0A084Dafaaf627dd3D20042caC9D2c1AE`](https://explorer.testnet.chain.robinhood.com/address/0xcd31ACd0A084Dafaaf627dd3D20042caC9D2c1AE) |
 | MockStockToken TSLA (mock) | [`0x2BBdFbAAfF34D53868abA892bA0D0Ff088362bcf`](https://explorer.testnet.chain.robinhood.com/address/0x2BBdFbAAfF34D53868abA892bA0D0Ff088362bcf) |
 
+All fifteen contracts have their source verified on the testnet explorer (`forge verify-contract --verifier
+blockscout`); the two vaults, which the factory creates, were verified with constructor arguments read back
+from the chain.
+
 Read back from the chain after deploying: USDG decimals 6, `AgentMandate.quoteScale` 1e12, attestation gate
 off (`maxAttestationAge` is the largest uint64), `maxPriceAge` 432,000 seconds (5 days), fee 50 bps paid to the
 deployer, every stock buy-eligible, both vaults fully backed. Deploying cost 0.00034 test ETH.
