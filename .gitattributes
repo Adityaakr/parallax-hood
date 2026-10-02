@@ -1,0 +1,25 @@
+# What GitHub counts as this project's code.
+#
+# Linguist measures bytes per language, so a few large directories of material we did not write were
+# drowning the actual source: the Framer capture alone is 4 MB of HTML, and forge-std plus OpenZeppelin
+# are 2 MB of Solidity. Marking them vendored keeps the files (they are needed to build and to check the
+# design against its reference) while leaving them out of the language bar.
+
+# Reference capture of the Syncrun Framer template: pages, computed styles and assets the web app was
+# reconstructed from. Third-party material, kept as evidence. See apps/web/README.md and .recon/NOTES.md.
+.recon/** linguist-vendored
+apps/web/content/syncrun/** linguist-vendored
+
+# Foundry dependencies, committed rather than submoduled so a clone builds without git submodule init.
+contracts/lib/** linguist-vendored
+
+# Scaffold emitted by the fizz skill (clamping, cheatcode interface, assertion helpers). Ours is the
+# handler and property code above it, not these utilities.
+contracts/test/fizz/utils/** linguist-vendored
+
+# Generated from the forge artifacts by packages/sdk/scripts/gen-abis.ts on every build.
+packages/sdk/src/abis.ts linguist-generated
+
+# Recorded fixtures and broadcast receipts are evidence, not source.
+fixtures/** linguist-vendored
+contracts/broadcast/** linguist-generated

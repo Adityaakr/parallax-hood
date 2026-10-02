@@ -1,0 +1,12 @@
+packages:
+  - packages/*
+  - apps/*
+  - scripts
+allowBuilds:
+  # WalletConnect's AppKit, pulled in by Privy. Its install script is not needed to use the library,
+  # and an install script we do not need is one we do not run.
+  '@reown/appkit': false
+  bufferutil: true
+  esbuild: true
+  keccak: true
+  utf-8-validate: true

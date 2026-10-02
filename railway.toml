@@ -1,0 +1,12 @@
+# Two services from this repository, both built from a Dockerfile:
+#
+#   resolver  RAILWAY_DOCKERFILE_PATH=Dockerfile      PROCESS=resolver   volume at /data
+#   web       RAILWAY_DOCKERFILE_PATH=Dockerfile.web                     no volume
+#
+# (keeper and mcp are the same image as the resolver with PROCESS=keeper | mcp.)
+# Set RAILWAY_DOCKERFILE_PATH as a service variable, or pick the file under Settings -> Build.
+# Everything each one needs is in docs/deploy.md.
+[build]
+builder = "DOCKERFILE"
+[deploy]
+restartPolicyType = "ON_FAILURE"

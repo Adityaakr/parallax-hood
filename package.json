@@ -1,0 +1,29 @@
+{
+  "name": "parallax-hood",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Parallax on Robinhood Chain: share-denominated routing, USDG-settled index vaults and onchain agent mandates for tokenized stocks.",
+  "scripts": {
+    "build": "pnpm -r --filter './packages/*' build && pnpm -r --filter './apps/*' build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "dev": "pnpm -r --parallel --filter './apps/*' dev",
+    "contracts:test": "cd contracts && forge test",
+    "contracts:build": "cd contracts && forge build",
+    "fork": "anvil --fork-url ${BSC_FORK_RPC_URL:-https://bsc-mainnet.public.blastapi.io} --chain-id 31337 --port 8547",
+    "fork:up": "./scripts/fork-up.sh",
+    "mocks:up": "./scripts/mocks-up.sh",
+    "testnet:up": "./scripts/testnet-up.sh",
+    "mainnet:up": "./scripts/mainnet-up.sh",
+    "docker:build": "docker build -t parallax ."
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "tsx": "^4.19.0"
+  },
+  "packageManager": "pnpm@11.23.0",
+  "engines": {
+    "node": ">=22"
+  }
+}

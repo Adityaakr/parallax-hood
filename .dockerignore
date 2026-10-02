@@ -1,0 +1,19 @@
+# the build context is sent to the daemon in full: without this it is 1.4 GB of node_modules and screenshots
+node_modules
+**/node_modules
+.git
+.recon
+.fork
+.next
+**/.next
+**/.next-prod
+**/dist
+contracts/out
+contracts/cache
+contracts/broadcast
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+agent/.studio

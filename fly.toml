@@ -1,0 +1,21 @@
+# fly launch --copy-config ; set PROCESS via `fly secrets set` or [env]
+app = "parallax-resolver"
+primary_region = "sin"
+[build]
+  dockerfile = "Dockerfile"
+[env]
+  PROCESS = "resolver"
+  PORT = "4000"
+  CHAIN_ID = "56"
+[http_service]
+  internal_port = 4000
+  force_https = true
+  auto_stop_machines = false
+  min_machines_running = 1
+[[http_service.checks]]
+  path = "/health"
+  interval = "30s"
+  timeout = "10s"
+[mounts]
+  source = "parallax_data"
+  destination = "/data"
