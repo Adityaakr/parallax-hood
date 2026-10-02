@@ -364,9 +364,9 @@ Configuration: `contracts/medusa.json` (4 workers, 500,000 calls, sequences of 1
 (`test_repro_burnKeepsBackingExactly`) under plain `forge test`.
 
 The campaign recorded in `contracts/fizz_data/report.md` (Medusa, 270,136 calls, no violations in the final run)
-was run before the port to 6-decimal USDG. The harness has been updated for USDG and compiles and runs under
-`forge test`, but the repository records no Medusa or Echidna campaign on the ported code. Run one before
-relying on that figure.
+was run before the port to 6-decimal USDG. The harness has been updated for USDG, and a Medusa run on the ported
+code (`FOUNDRY_PROFILE=fuzz medusa fuzz --timeout 150`, 2 October 2026) made 367,275 calls with 93 properties
+passed and 0 failed. That is a short run; no Echidna campaign on the ported code is recorded.
 
 ## How to run
 

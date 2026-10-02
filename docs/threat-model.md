@@ -302,8 +302,9 @@ issuer's terms is the user's responsibility, and the issuer's own blocklist is t
   mark fixes from a review pass during development; that is not an audit.
 - **What testing there is.** 139 Foundry tests (unit, fuzz, handler-based invariants, a harness smoke test), an
   opt-in fork test against chain 4663, and a Medusa / Echidna harness whose property list is
-  `contracts/PROPERTIES.md`. The recorded Medusa campaign was run before the port to 6-decimal USDG and has not
-  been repeated on the ported code. No static-analysis run on the ported contracts is recorded.
+  `contracts/PROPERTIES.md`. A Medusa campaign on the ported code (6-decimal USDG) ran on 2 October 2026:
+  367,275 calls in two and a half minutes, 93 properties passed, 0 failed. That is a short run, not a long
+  campaign. No static-analysis run on the ported contracts is recorded.
 - **Supply caps.** `StockRegistry.setSupplyCap` bounds what an unaudited vault can hold (D8). The deploy script
   applies a cap only when `SUPPLY_CAP_UNITS` is set, and its default is no cap. Set it for any deployment that
   holds real funds.
