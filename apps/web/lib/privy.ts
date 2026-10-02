@@ -8,13 +8,14 @@
  * whatever the browser has injected, behind one button, and a session that survives a reload.
  *
  * The app id is a public client identifier; it is in the bundle either way, and the app's allowed domains are
- * what protect it. NEXT_PUBLIC_PRIVY_APP_ID overrides it per deployment.
+ * what protect it. NEXT_PUBLIC_PRIVY_APP_ID overrides it per deployment; left unset or empty (an image built
+ * without the build argument sets it to an empty string) the shared Parallax app id below is used.
  */
 import type { PrivyClientConfig } from "@privy-io/react-auth";
 import { CHAINS, chainIdToNetwork, robinhood, robinhoodTestnet, robinhoodFork, localMocks } from "@parallax-hood/sdk";
 import { DEFAULT_CHAIN } from "./config";
 
-export const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "cmq7sn14a007r0cl8y19z4krd";
+export const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID || "cmq7sn14a007r0cl8y19z4krd";
 
 export const privyConfig: PrivyClientConfig = {
   loginMethods: ["wallet"],

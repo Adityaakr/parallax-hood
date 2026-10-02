@@ -3,6 +3,8 @@
 #   resolver  RAILWAY_DOCKERFILE_PATH=Dockerfile      PROCESS=resolver   CHAIN_ID=46630   volume at /data
 #             live prices on the testnet: HYBRID_MARKETS=true and MIRROR_PRIVATE_KEY=<testnet deployer key>
 #   web       RAILWAY_DOCKERFILE_PATH=Dockerfile.web  NEXT_PUBLIC_RESOLVER_URL=<resolver url>  NEXT_PUBLIC_DEFAULT_CHAIN=46630
+#             NEXT_PUBLIC_PRIVY_APP_ID is optional: unset, the shared Parallax Privy app is used, and the web
+#             service's domain has to be added to that app's allowed domains in the Privy dashboard
 #
 # The MCP server and the health monitor are the resolver's image with PROCESS=mcp or PROCESS=monitor.
 # Set RAILWAY_DOCKERFILE_PATH as a service variable, or pick the file under Settings -> Build.
