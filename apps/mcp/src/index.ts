@@ -44,5 +44,5 @@ if (!useHttp) {
     }
     await transport.handleRequest(req, res, body);
   });
-  http.listen(cfg.port, () => console.error(JSON.stringify({ ts: new Date().toISOString(), level: "info", scope: "mcp", msg: `parallax mcp on http://127.0.0.1:${cfg.port}/mcp`, chainId: cfg.chainId, agent: Boolean(cfg.agentPrivateKey) })));
+  http.listen(cfg.port, cfg.host, () => console.error(JSON.stringify({ ts: new Date().toISOString(), level: "info", scope: "mcp", msg: `parallax mcp on http://${cfg.host}:${cfg.port}/mcp`, chainId: cfg.chainId, agent: Boolean(cfg.agentPrivateKey) })));
 }

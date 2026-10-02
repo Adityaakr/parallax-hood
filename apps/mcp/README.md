@@ -19,6 +19,7 @@ Exposes Parallax to Claude (Desktop, Code) and any MCP client. Transport: **stdi
 | `execute_with_mandate(mandate_id, action, params, dry_run?)` | **write** | Signs with the server's agent key and calls **only** `AgentMandate.agentBuyShares` / `agentMintBasket`. Refuses anything outside the mandate before sending, simulates, then sends. Outputs go to the owner. |
 
 ### Safety rules (enforced in code)
+- The HTTP transport has no authentication and binds to `127.0.0.1` unless `MCP_HOST` says otherwise. Anyone who can reach it can use the agent key within its mandates, so put it behind something that authenticates before exposing it.
 - The server never holds owner keys. The optional `AGENT_PRIVATE_KEY` can only act through `AgentMandate`; the contract hardcodes recipient = owner and enforces per-tx cap, daily cap, expiry, allowlists and instant revocation.
 - Every write simulates first (`eth_estimateGas` from the agent) and returns the simulation result; failures are returned as errors with the decoded custom error.
 - Every response that builds a transaction includes the `quote_hash`; the resolver serves the full scoring record at `GET /quotes/:hash`.
