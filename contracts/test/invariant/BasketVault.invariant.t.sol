@@ -105,6 +105,9 @@ contract VaultHandler is Test {
         use[1] = _leg(address(usdg), address(aaplB), uA);
         if (uO > 0) use[2] = _leg(address(usdg), address(nvdaOn), uO);
         maxUsdg = uB + uO + uA;
+        // the vault takes its fee out of the unspent remainder: without room for it every mint reverts and the
+        // invariants below would be holding over an empty vault
+        maxUsdg += maxUsdg * 60 / 10_000 + 1;
     }
 
     function mint(uint256 seed, uint256 units, uint256 ondoBps) external {

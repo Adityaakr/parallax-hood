@@ -30,6 +30,19 @@ contract HandlerSanity is BaseTest {
         assertTrue(basket.backingOk());
     }
 
+    /// The invariant suite runs with the protocol fee on. A handler whose mint budget leaves no room for the fee
+    /// has every mint revert, and the invariants then hold over an empty vault and prove nothing.
+    function test_vaultHandlerMintsWithTheFeeOn() public {
+        vm.prank(admin);
+        registry.setFee(50, makeAddr("treasury"));
+        VaultHandler h = new VaultHandler(basket, registry, usdg, nvdaOn, nvdaB, aaplB, venue, keeper, guardian);
+        h.mint(1, 10e18, 2000);
+        assertEq(h.mints(), 1, "mint path with the fee on");
+        assertGt(basket.totalSupply(), 0);
+        h.redeem(1, 2e18);
+        assertEq(h.redeems(), 1, "redeem path with the fee on");
+    }
+
     function test_mandateHandlerReachesAllPaths() public {
         vm.startPrank(admin);
         registry.setLimits(365 days, 365 days, 500);
