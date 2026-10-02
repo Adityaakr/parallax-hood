@@ -33,8 +33,9 @@ export function createServices(cfg: Config, dbPath = cfg.dbPath): Services {
   const db = new Db(dbPath);
   const resolver = new Resolver(chain, db);
   // Chainlink history is mainnet history: the fork reads it directly instead of forwarding every round through anvil.
-  // A mock network that is not twinned with mainnet prices mock tokens, so it has none.
-  const history = new PriceHistory(chain.mainnet, cfg.network === "robinhood" || cfg.network === "fork" || cfg.hybrid, (t) => chain.catalogue.feed(t), db);
+  // The testnet shows it too, for display and named as mainnet's: its own prices are a posted snapshot with no past.
+  // The local mocks chain has none, so tests never depend on a remote endpoint.
+  const history = new PriceHistory(chain.mainnet, cfg.network !== "mocks" || cfg.hybrid, (t) => chain.catalogue.feed(t), db);
   const baskets = new Baskets(chain, resolver, history);
   const indexer = new Indexer(chain, db, cfg.INDEXER_FROM_BLOCK, cfg.INDEXER_POLL_MS);
   return { cfg, chain, db, resolver, baskets, indexer, history };
@@ -102,7 +103,8 @@ export function createApp(s: Services) {
     const points = Math.min(120, Math.max(2, Number(c.req.query("points") ?? 14)));
     const ticker = c.req.param("ticker").toUpperCase();
     if (s.history.hasHistory(ticker)) {
-      return c.json(json({ ticker, source: "chainlink rounds", series: await s.history.series(ticker, days, points), returns: await s.history.returns(ticker) }));
+      const source = s.chain.isMocks && !s.cfg.hybrid ? "chainlink rounds on Robinhood Chain mainnet (display only)" : "chainlink rounds";
+      return c.json(json({ ticker, source, series: await s.history.series(ticker, days, points), returns: await s.history.returns(ticker) }));
     }
     const series = await s.resolver.marketHistory.series(ticker, days, points);
     const returns = await s.resolver.marketHistory.returns(ticker);

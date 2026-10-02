@@ -95,7 +95,7 @@ for (const ticker of TICKERS) {
   if (!description.toUpperCase().includes(ticker)) fail(`${ticker} feed describes itself as "${description}"`);
   const tokenPrice = (round[1] * 10n ** 18n) / 10n ** BigInt(feedDecimals); // USD per token, 1e18
   const sharePrice = (tokenPrice * 10n ** 18n) / multiplier; // the feed includes the multiplier
-  rows.push({ ticker, token, proxy, multiplier, tokenPrice, sharePrice, updatedAt: Number(round[3]), feedDecimals, heartbeat: feed.heartbeat, deviation: feed.threshold, marketHours: feed.docs?.marketHours ?? null, name: asset.tokenName.replace(/\s*•\s*Robinhood Token$/, ""), logoUrl: asset.logoUrl ?? null, description });
+  rows.push({ ticker, token, proxy, multiplier, tokenPrice, sharePrice, updatedAt: Number(round[3]), feedDecimals, heartbeat: feed.heartbeat, deviation: feed.threshold, marketHours: feed.docs?.marketHours ?? null, name: asset.tokenName.replace(/\s*•\s*Robinhood Token$/, ""), description });
   console.log(`${ticker.padEnd(6)} token ${token}  feed ${proxy}  ${(Number(tokenPrice) / 1e18).toFixed(2)} USD/token  multiplier ${(Number(multiplier) / 1e18).toFixed(9)}`);
 }
 
@@ -122,7 +122,8 @@ const universe = {
   _allowedTargets_note: "Uniswap v3 SwapRouter02, the only venue routed. It is admin-gated and only ever called by LegExecutor, which trusts balance deltas.",
   priceFeeds: Object.fromEntries(rows.map((r) => [r.ticker, r.proxy])),
   _priceFeeds_note: `Chainlink feeds, ${rows[0]?.feedDecimals} decimals, ${rows[0]?.heartbeat}s heartbeat, ${rows[0]?.deviation}% deviation, schedule ${rows[0]?.marketHours}. Each prices the token with its ERC-8056 multiplier included, so the registry divides by the token's ratio.`,
-  brands: Object.fromEntries(rows.map((r) => [r.ticker, { name: r.name, logoUrl: r.logoUrl }])),
+  brands: Object.fromEntries(rows.map((r) => [r.ticker, { name: r.name, logoUrl: null }])),
+  _brands_note: "Company names from Robinhood's asset list. Its logoUrl is Robinhood's own mark for every token, not the company's, so no logo is recorded and the app shows a lettered mark.",
   underlyings: rows.map((r) => r.ticker),
   representations: rows.map((r) => ({ ticker: r.ticker, platform: "robinhood", symbol: r.ticker, token: r.token, source: "ERC8056", initialRatio: r.multiplier.toString() })),
   indices,

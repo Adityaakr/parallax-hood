@@ -97,10 +97,11 @@ export class Baskets {
       returns[k] = thenValue === 0n ? null : Number(((nowValue - thenValue) * 10_000n) / thenValue);
     }
     const unpriced = priced.filter((c) => c.source === null).map((c) => c.ticker);
-    const label = { chainlink: "chainlink rounds", market: "daily closes", pool: "uniswap v3 twap" } as const;
+    // a Robinhood feed prices the token with reinvested dividends in its multiplier; closes are the bare share price
+    const label = { chainlink: "chainlink rounds (token price, dividends reinvested)", market: "daily closes (price return)", pool: "uniswap v3 twap (token price)" } as const;
     return {
       returns, coverage, coverageBps, covered: covered.length, total: constituents.length, unpriced,
-      source: used.size === 0 ? null : [...used].map((x) => label[x as keyof typeof label]).join(" + ") + ", price return, dividends excluded",
+      source: used.size === 0 ? null : [...used].map((x) => label[x as keyof typeof label]).join(" + ") + (this.chain.isMocks && !this.chain.isHybrid ? ", from Robinhood Chain mainnet (display only)" : ""),
     };
   }
 

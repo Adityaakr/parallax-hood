@@ -33,8 +33,12 @@ const EnvSchema = z.object({
   /** Testnet faucet signer (mints mock USDG, tops up test ETH). Never used on mainnet. */
   FAUCET_PRIVATE_KEY: z.string().optional(),
   FAUCET_COOLDOWN_S: z.coerce.number().default(6 * 3600),
-  /** Hybrid: market data from Robinhood Chain mainnet, execution on this (mock) network. Default on for the testnet. */
-  HYBRID_MARKETS: z.coerce.boolean().optional(),
+  /**
+   * Price a mock network against the live mainnet market instead of its own posted snapshot. Off by default:
+   * nothing re-prices the mock venue here, so a live reference would drift away from it and every quote would
+   * read as a premium that is only the age of the snapshot.
+   */
+  HYBRID_MARKETS: z.coerce.boolean().default(false),
   /** Daily stock closes for the return figures (display only). Off on the mocks chain and in tests. */
   MARKET_HISTORY: z.coerce.boolean().default(true),
   MARKET_HISTORY_URL: z.string().default("https://query1.finance.yahoo.com"),
@@ -69,6 +73,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     : parseDeployment({ chainId: e.CHAIN_ID, usdg: CHAIN_USDG[network] ?? ZERO, registry: ZERO, router: ZERO, factory: ZERO, mandate: ZERO });
   const dbUrl = e.DATABASE_URL ?? `file:./parallax-${e.CHAIN_ID}.db`;
   const dbPath = dbUrl.startsWith("file:") ? dbUrl.slice(5) : dbUrl;
-  const hybrid = e.HYBRID_MARKETS ?? (network === "robinhoodTestnet" && Boolean(deployment.mocks));
+  const hybrid = e.HYBRID_MARKETS && Boolean(deployment.mocks);
   return { ...e, DATABASE_URL: dbUrl, quoteOnly, hybrid, network, rpcUrl, deployment, chain: CHAINS[network], dbPath };
 }

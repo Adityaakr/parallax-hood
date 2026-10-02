@@ -106,11 +106,12 @@ d("resolver integration (local mocks chain)", () => {
     expect(BigInt(r.fee.totalUsdgIn)).toBe(BigInt(r.chosen.usdgIn) + (BigInt(r.chosen.usdgIn) * 50n) / 10_000n);
     await approve(s.chain.d.usdg, s.chain.d.router, BigInt(r.fee.totalUsdgIn));
     const usdgBefore = await pub.readContract({ address: s.chain.d.usdg, abi: Erc20Abi, functionName: "balanceOf", args: [me] });
+    const heldBefore = await pub.readContract({ address: s.chain.d.mocks!.NVDA!, abi: Erc20Abi, functionName: "balanceOf", args: [me] });
     const hash = await send(r.tx);
     const usdgAfter = await pub.readContract({ address: s.chain.d.usdg, abi: Erc20Abi, functionName: "balanceOf", args: [me] });
     expect(usdgBefore - usdgAfter).toBe(BigInt(r.fee.totalUsdgIn));
     const held = await pub.readContract({ address: s.chain.d.mocks!.NVDA!, abi: Erc20Abi, functionName: "balanceOf", args: [me] });
-    expect(held).toBe(BigInt(r.candidates[0].tokensOut));
+    expect(held - heldBefore).toBe(BigInt(r.candidates[0].tokensOut));
     await s.indexer.syncOnce();
     const rec = await get(`/receipts?actor=${me}`);
     const mine = rec.receipts.filter((x: any) => x.tx_hash === hash);
