@@ -11,11 +11,11 @@ export const HOME = {
   header: {
     tag: "Parallax on Robinhood Chain",
     title: "One stock. Many tokens. One true position, in shares.",
-    text: "A token is not a share. A Robinhood stock token carries an on-chain multiplier that grows with reinvested dividends and changes on splits, so the number of tokens you hold is not the number of shares you own. Parallax measures everything in underlying shares: USDG index vaults, agent mandates and execution. Tested against a fork of Robinhood Chain mainnet; public deployment is pending.",
+    text: "A token is not a share. A Robinhood stock token carries an on-chain multiplier that grows with reinvested dividends and changes on splits, so the number of tokens you hold is not the number of shares you own. Parallax measures everything in underlying shares: USDG index vaults, agent mandates and execution. Deployed on Robinhood Chain Testnet with mock tokens, and tested against a fork of mainnet; mainnet deployment is pending.",
     primary: { label: "View the indices", href: "/baskets" },
     secondary: { label: "Search a stock", href: "/stocks" },
     /* the UI-Card's typewriter: someone asking an agent to quote, decide and execute through Parallax */
-    ui: { model: "Fork of Robinhood Chain", phrases: [
+    ui: { model: "Robinhood Chain Testnet", phrases: [
       "How many shares of NVDA does one NVDA token stand for right now?",
       "Mint one unit of pxMAG7 with USDG and show me the receipts.",
       "Quote AAPL in dollars per share against the Chainlink price.",
@@ -79,7 +79,7 @@ export const HOME = {
     tag: "Trust",
     title: "What is enforced, and what you still trust.",
     text: "Each card names the document it comes from. None of this has been audited.",
-    large: { quote: "The contracts have been run on a local chain with mock tokens, and against a fork of Robinhood Chain mainnet with the real tokens, feeds and pools. Nothing is deployed to a public network yet. The code is unaudited, and a vault's supply can be capped by the admin.", name: "Status", role: "Fork of Robinhood Chain · chain id 4663", social: REPO },
+    large: { quote: "The contracts are deployed on Robinhood Chain Testnet, where the stock tokens, USDG and the venue are mocks, and have been run against a fork of Robinhood Chain mainnet with the real tokens, feeds and pools. Mainnet deployment is pending. The code is unaudited, and a vault's supply can be capped by the admin.", name: "Status", role: "Robinhood Chain Testnet · chain id 46630", social: REPO },
     ticker: [
       { rating: "Enforced", quote: "After every call the vault must hold at least units × sharesPerUnit of every constituent, or the call reverts.", avatar: MARK, name: "Backing", role: "docs/invariants.md", social: DOCS.invariants },
       { rating: "Enforced", quote: "Redeeming in kind does not depend on any oracle, venue or pause that Parallax controls, and carries no fee.", avatar: MARK, name: "Redeem in kind", role: "docs/invariants.md", social: DOCS.invariants },
