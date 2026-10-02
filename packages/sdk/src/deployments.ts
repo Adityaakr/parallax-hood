@@ -6,7 +6,7 @@ export const DeploymentSchema = z.object({
   deployBlock: z.number().optional(),
   admin: z.string().optional(),
   keeper: z.string().optional(),
-  usdt: z.string(),
+  usdg: z.string(),
   registry: z.string(),
   router: z.string(),
   factory: z.string(),
@@ -18,7 +18,7 @@ export const DeploymentSchema = z.object({
 export type Deployment = {
   chainId: number;
   deployBlock?: number;
-  usdt: Address;
+  usdg: Address;
   registry: Address;
   router: Address;
   factory: Address;
@@ -38,7 +38,7 @@ export function parseDeployment(json: unknown): Deployment {
   return {
     chainId: d.chainId,
     deployBlock: d.deployBlock,
-    usdt: getAddress(d.usdt),
+    usdg: getAddress(d.usdg),
     registry: getAddress(d.registry),
     router: getAddress(d.router),
     factory: getAddress(d.factory),

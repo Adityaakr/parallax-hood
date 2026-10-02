@@ -4,6 +4,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   sharesForTokens, tokensForShares, requiredShares, proRata, stepBps, applySlippage, premiumBps, parseUnits, formatUnits, WAD,
+  parseUsdg, formatUsdg, usdgToWad, wadToUsdg,
 } from "../src/shareMath.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -54,5 +55,17 @@ describe("helpers", () => {
     expect(formatUnits(123456789n, 6, 2)).toBe("123.45");
     expect(formatUnits(0n, 18)).toBe("0");
     expect(() => parseUnits("abc", 18)).toThrow();
+  });
+  it("USDG is six decimals and converts to 1e18 USD explicitly", () => {
+    expect(parseUsdg("100")).toBe(100_000_000n);
+    expect(parseUsdg("0.0000019")).toBe(1n); // the seventh decimal cannot be held
+    expect(formatUsdg(12_345_678n)).toBe("12.345678");
+    expect(formatUsdg(12_345_678n, 2)).toBe("12.34");
+    expect(usdgToWad(1_000_000n)).toBe(WAD);
+    expect(wadToUsdg(WAD)).toBe(1_000_000n);
+    // below one unit of USDG: a payout rounds down to nothing, a cost rounds up to one unit
+    expect(wadToUsdg(999_999_999_999n)).toBe(0n);
+    expect(wadToUsdg(999_999_999_999n, "up")).toBe(1n);
+    expect(wadToUsdg(usdgToWad(7n), "up")).toBe(7n);
   });
 });

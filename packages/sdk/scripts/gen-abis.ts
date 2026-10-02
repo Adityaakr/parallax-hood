@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const out = resolve(here, "../../../contracts/out");
-const contracts = ["StockRegistry", "ShareRouter", "BasketVault", "BasketFactory", "AgentMandate", "MockUSDT", "MockStockToken", "MockSwapTarget"];
+const contracts = ["StockRegistry", "ShareRouter", "BasketVault", "BasketFactory", "AgentMandate", "MockUSDG", "MockStockToken", "MockSwapTarget"];
 
 if (!existsSync(out)) {
   console.warn(`gen-abis: no ${out} (forge build has not run here) — keeping the committed src/abis.ts`);
@@ -25,7 +25,7 @@ for (const name of contracts) {
   const artifact = JSON.parse(readFileSync(p, "utf8"));
   parts.push(`export const ${name}Abi = ${JSON.stringify(artifact.abi)} as const;\n`);
 }
-// Minimal external ABIs we call directly (PancakeSwap, Chainlink, ERC-8056, ERC-20)
+// Minimal external ABIs we call directly (Uniswap v3, Chainlink, ERC-8056, ERC-20)
 parts.push(`export const Erc20Abi = ${JSON.stringify([
   { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ name: "a", type: "address" }], outputs: [{ type: "uint256" }] },
   { type: "function", name: "allowance", stateMutability: "view", inputs: [{ name: "o", type: "address" }, { name: "s", type: "address" }], outputs: [{ type: "uint256" }] },
@@ -37,15 +37,17 @@ parts.push(`export const Erc20Abi = ${JSON.stringify([
 ])} as const;\n`);
 parts.push(`export const Erc8056Abi = ${JSON.stringify([
   { type: "function", name: "uiMultiplier", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
-  { type: "function", name: "pendingMultiplier", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }, { type: "uint256" }] },
-  { type: "function", name: "hasPendingMultiplier", stateMutability: "view", inputs: [], outputs: [{ type: "bool" }] },
+  { type: "function", name: "newUIMultiplier", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "effectiveAt", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "balanceOfUI", stateMutability: "view", inputs: [{ name: "a", type: "address" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "totalSupplyUI", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
 ])} as const;\n`);
 parts.push(`export const ChainlinkAggregatorAbi = ${JSON.stringify([
   { type: "function", name: "latestRoundData", stateMutability: "view", inputs: [], outputs: [{ name: "roundId", type: "uint80" }, { name: "answer", type: "int256" }, { name: "startedAt", type: "uint256" }, { name: "updatedAt", type: "uint256" }, { name: "answeredInRound", type: "uint80" }] },
   { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
   { type: "function", name: "description", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
 ])} as const;\n`);
-parts.push(`export const PancakeQuoterV2Abi = ${JSON.stringify([
+parts.push(`export const UniswapQuoterV2Abi = ${JSON.stringify([
   { type: "function", name: "quoteExactInputSingle", stateMutability: "nonpayable",
     inputs: [{ name: "params", type: "tuple", components: [
       { name: "tokenIn", type: "address" }, { name: "tokenOut", type: "address" }, { name: "amountIn", type: "uint256" }, { name: "fee", type: "uint24" }, { name: "sqrtPriceLimitX96", type: "uint160" }] }],
@@ -58,7 +60,7 @@ parts.push(`export const PancakeQuoterV2Abi = ${JSON.stringify([
     inputs: [{ name: "path", type: "bytes" }, { name: "amountIn", type: "uint256" }],
     outputs: [{ name: "amountOut", type: "uint256" }, { name: "sqrtPriceX96AfterList", type: "uint160[]" }, { name: "initializedTicksCrossedList", type: "uint32[]" }, { name: "gasEstimate", type: "uint256" }] },
 ])} as const;\n`);
-parts.push(`export const PancakeSmartRouterAbi = ${JSON.stringify([
+parts.push(`export const UniswapSwapRouter02Abi = ${JSON.stringify([
   { type: "function", name: "exactInputSingle", stateMutability: "payable",
     inputs: [{ name: "params", type: "tuple", components: [
       { name: "tokenIn", type: "address" }, { name: "tokenOut", type: "address" }, { name: "fee", type: "uint24" }, { name: "recipient", type: "address" }, { name: "amountIn", type: "uint256" }, { name: "amountOutMinimum", type: "uint256" }, { name: "sqrtPriceLimitX96", type: "uint160" }] }],
@@ -71,9 +73,20 @@ parts.push(`export const PancakeSmartRouterAbi = ${JSON.stringify([
     inputs: [{ name: "params", type: "tuple", components: [
       { name: "path", type: "bytes" }, { name: "recipient", type: "address" }, { name: "amountIn", type: "uint256" }, { name: "amountOutMinimum", type: "uint256" }] }],
     outputs: [{ name: "amountOut", type: "uint256" }] },
+  { type: "function", name: "exactOutput", stateMutability: "payable",
+    inputs: [{ name: "params", type: "tuple", components: [
+      { name: "path", type: "bytes" }, { name: "recipient", type: "address" }, { name: "amountOut", type: "uint256" }, { name: "amountInMaximum", type: "uint256" }] }],
+    outputs: [{ name: "amountIn", type: "uint256" }] },
 ])} as const;\n`);
-parts.push(`export const PancakeV3FactoryAbi = ${JSON.stringify([
+parts.push(`export const UniswapV3FactoryAbi = ${JSON.stringify([
   { type: "function", name: "getPool", stateMutability: "view", inputs: [{ name: "a", type: "address" }, { name: "b", type: "address" }, { name: "fee", type: "uint24" }], outputs: [{ type: "address" }] },
+])} as const;\n`);
+parts.push(`export const UniswapV3PoolAbi = ${JSON.stringify([
+  { type: "function", name: "liquidity", stateMutability: "view", inputs: [], outputs: [{ type: "uint128" }] },
+  { type: "function", name: "token0", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "token1", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "slot0", stateMutability: "view", inputs: [], outputs: [{ name: "sqrtPriceX96", type: "uint160" }, { name: "tick", type: "int24" }, { name: "observationIndex", type: "uint16" }, { name: "observationCardinality", type: "uint16" }, { name: "observationCardinalityNext", type: "uint16" }, { name: "feeProtocol", type: "uint8" }, { name: "unlocked", type: "bool" }] },
+  { type: "function", name: "observe", stateMutability: "view", inputs: [{ name: "secondsAgos", type: "uint32[]" }], outputs: [{ name: "tickCumulatives", type: "int56[]" }, { name: "secondsPerLiquidityCumulativeX128s", type: "uint160[]" }] },
 ])} as const;\n`);
 writeFileSync(resolve(here, "../src/abis.ts"), parts.join("\n"));
 console.log(`wrote src/abis.ts (${contracts.length} contract ABIs + externals)`);

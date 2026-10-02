@@ -81,7 +81,22 @@ export function formatUnits(value: bigint, decimals: number, maxFrac = decimals)
 export const parseWad = (v: string) => parseUnits(v, 18);
 export const formatWad = (v: bigint, maxFrac = 18) => formatUnits(v, 18, maxFrac);
 
-/** Protocol fee on a USDT notional, exactly as the contracts compute it (floor). */
+// ---- USDG (6 decimals) ----
+// Shares, ratios and USD prices are 1e18-scaled; amounts of USDG are not. These are the only places the two
+// scales meet, so a raw USDG amount is never mistaken for a 1e18 USD value or the other way round.
+
+const USDG_SCALE = 10n ** 12n; // 1e18 / 1e6
+
+/** "12.5" → 12_500_000n. Digits beyond the sixth decimal are dropped, as the token cannot hold them. */
+export const parseUsdg = (v: string) => parseUnits(v, 6);
+export const formatUsdg = (v: bigint, maxFrac = 6) => formatUnits(v, 6, maxFrac);
+/** Raw USDG → 1e18-scaled USD, taking USDG at $1 as the contracts do. */
+export const usdgToWad = (usdg: bigint) => usdg * USDG_SCALE;
+/** 1e18-scaled USD → raw USDG, rounded down (a payout) or up (an amount that must cover a cost). */
+export const wadToUsdg = (usd: bigint, round: "down" | "up" = "down") =>
+  round === "up" ? (usd + USDG_SCALE - 1n) / USDG_SCALE : usd / USDG_SCALE;
+
+/** Protocol fee on a USDG notional, exactly as the contracts compute it (floor). */
 export function feeOn(notional: bigint, bps: number | bigint): bigint {
   return (notional * BigInt(bps)) / BPS;
 }

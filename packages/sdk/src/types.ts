@@ -1,8 +1,12 @@
 import { z } from "zod";
 
-/** Shared wire types between resolver, MCP and web. Amounts are decimal strings (1e18 units unless noted). */
+/**
+ * Shared wire types between resolver, MCP and web. Amounts are decimal strings: shares, ratios and USD values in
+ * 1e18 units, amounts of USDG (every field named `usdg…`) in its own 6-decimal units.
+ */
 
-export const PlatformSchema = z.enum(["ondo", "bstock", "xstock"]);
+/** Issuer of a representation. Robinhood is the only one on Robinhood Chain today; the type stays open. */
+export const PlatformSchema = z.string().min(1);
 export type Platform = z.infer<typeof PlatformSchema>;
 
 export const PolicySchema = z.object({
@@ -14,7 +18,7 @@ export const PolicySchema = z.object({
   preferPlatforms: z.array(PlatformSchema).default([]),
   excludePlatforms: z.array(PlatformSchema).default([]),
   allowClosedMarket: z.boolean().default(false),
-  contractExecutable: z.boolean().default(true), // require legs a contract can execute (AMM), not RFQ
+  contractExecutable: z.boolean().default(true), // require legs a contract can execute (an AMM pool)
 });
 export type Policy = z.infer<typeof PolicySchema>;
 
@@ -24,7 +28,7 @@ export const CandidateSchema = z.object({
   symbol: z.string(),
   ratio: z.string(), // 1e18
   ratioSource: z.enum(["KEEPER", "ERC8056"]),
-  venue: z.string(), // e.g. "pancake-v3:500", "binance-rfq"
+  venue: z.string(), // e.g. "uniswap-v3:500", "uniswap-v3:500>3000"
   tokensOut: z.string(),
   sharesOut: z.string(),
   effectiveCostUsd: z.string(), // decimal USD, 18-dec string
@@ -74,7 +78,7 @@ export const ResolveResultSchema = z.object({
       legs: z.array(LegWireSchema),
       sharesOut: z.string(),
       minShares: z.string(),
-      usdtIn: z.string(),
+      usdgIn: z.string(),
       split: z.array(z.object({ token: z.string(), bps: z.number() })),
       why: z.string(),
     })

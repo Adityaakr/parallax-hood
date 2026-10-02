@@ -1,5 +1,5 @@
 import { type Address, type Hex, encodeFunctionData, encodePacked } from "viem";
-import { PancakeSmartRouterAbi, MockSwapTargetAbi } from "./abis.js";
+import { UniswapSwapRouter02Abi, MockSwapTargetAbi } from "./abis.js";
 
 /** Mirrors `LegExecutor.Leg`. */
 export type Leg = {
@@ -10,8 +10,8 @@ export type Leg = {
   tokenOut: Address;
 };
 
-/** Single-hop PancakeSwap v3 leg. `recipient` must be the contract that executes the leg. */
-export function pancakeExactInputSingleLeg(p: {
+/** Single-hop Uniswap v3 leg (SwapRouter02). `recipient` must be the contract that executes the leg. */
+export function uniswapExactInputSingleLeg(p: {
   router: Address;
   tokenIn: Address;
   tokenOut: Address;
@@ -21,7 +21,7 @@ export function pancakeExactInputSingleLeg(p: {
   recipient: Address;
 }): Leg {
   const data = encodeFunctionData({
-    abi: PancakeSmartRouterAbi,
+    abi: UniswapSwapRouter02Abi,
     functionName: "exactInputSingle",
     args: [
       {
@@ -39,7 +39,7 @@ export function pancakeExactInputSingleLeg(p: {
 }
 
 /** Exact-output single-hop leg: receive exactly `amountOut`, spend at most `amountInMaximum` (= leg.maxIn). */
-export function pancakeExactOutputSingleLeg(p: {
+export function uniswapExactOutputSingleLeg(p: {
   router: Address;
   tokenIn: Address;
   tokenOut: Address;
@@ -49,7 +49,7 @@ export function pancakeExactOutputSingleLeg(p: {
   recipient: Address;
 }): Leg {
   const data = encodeFunctionData({
-    abi: PancakeSmartRouterAbi,
+    abi: UniswapSwapRouter02Abi,
     functionName: "exactOutputSingle",
     args: [
       {
@@ -82,7 +82,7 @@ export function encodeV3Path(tokens: Address[], fees: number[]): Hex {
   return encodePacked(types, values);
 }
 
-export function pancakeExactInputLeg(p: {
+export function uniswapExactInputLeg(p: {
   router: Address;
   tokens: Address[];
   fees: number[];
@@ -91,11 +91,28 @@ export function pancakeExactInputLeg(p: {
   recipient: Address;
 }): Leg {
   const data = encodeFunctionData({
-    abi: PancakeSmartRouterAbi,
+    abi: UniswapSwapRouter02Abi,
     functionName: "exactInput",
     args: [{ path: encodeV3Path(p.tokens, p.fees), recipient: p.recipient, amountIn: p.amountIn, amountOutMinimum: p.amountOutMinimum }],
   });
   return { target: p.router, data, tokenIn: p.tokens[0]!, maxIn: p.amountIn, tokenOut: p.tokens[p.tokens.length - 1]! };
+}
+
+/** Multi-hop exact-output leg. `tokens`/`fees` are in swap order; the router wants the path written backwards. */
+export function uniswapExactOutputLeg(p: {
+  router: Address;
+  tokens: Address[];
+  fees: number[];
+  amountOut: bigint;
+  amountInMaximum: bigint;
+  recipient: Address;
+}): Leg {
+  const data = encodeFunctionData({
+    abi: UniswapSwapRouter02Abi,
+    functionName: "exactOutput",
+    args: [{ path: encodeV3Path([...p.tokens].reverse(), [...p.fees].reverse()), recipient: p.recipient, amountOut: p.amountOut, amountInMaximum: p.amountInMaximum }],
+  });
+  return { target: p.router, data, tokenIn: p.tokens[0]!, maxIn: p.amountInMaximum, tokenOut: p.tokens[p.tokens.length - 1]! };
 }
 
 /** Leg against the MockSwapTarget venue (testnet / local mocks). */
