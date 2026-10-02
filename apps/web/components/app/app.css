@@ -304,6 +304,12 @@
 .app-canvas .mock-banner b { font-weight: 600; }
 /* the same strip on a test network priced from the real market: informative, not a warning */
 .app-canvas .mock-banner[data-live] { border-color: color-mix(in srgb, var(--good) 50%, transparent); background: color-mix(in srgb, var(--good) 7%, transparent); }
+/* The one-press network switch beside the account row, shown only while the wallet is on another network. */
+.app-canvas .net-switch { display: inline-flex; align-items: center; gap: 8px; padding: 10px 15px; border-radius: 30px; white-space: nowrap; cursor: pointer;
+  font-family: var(--font-sans); font-size: 14px; font-weight: 600; line-height: 19.6px; color: var(--color-heading);
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent); background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.app-canvas .net-switch:hover { background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.app-canvas .net-switch:disabled { cursor: progress; opacity: .7; }
 /* Shell footer: the eligibility notice, on every product page. */
 .app-canvas .app-foot { margin-top: auto; padding-top: 18px; border-top: var(--dash); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 24px;
   font-size: 12.8px; line-height: 18px; color: var(--muted); }
