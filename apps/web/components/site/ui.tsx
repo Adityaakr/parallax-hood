@@ -83,15 +83,16 @@ export function Counter({ end, decimals = 0, symbol = "" }: { end: number; decim
 }
 
 /** Logos: 200×100 tiles, duplicated for a seamless loop. */
-export function LogoRail({ items, caption }: { items: { src: string; w: number; h: number; label?: string }[]; caption: string }) {
+export function LogoRail({ items, caption }: { items: { src: string; w: number; h: number; label?: string; alt?: string; tone?: "neon" }[]; caption: string }) {
   return (
     <div className="flex flex-col items-center gap-[30px] w-full">
       <span className="t-small" style={{ color: "var(--color-heading)" }}>{caption}</span>
       <div className="shell w-full overflow-hidden">
         <div className="logos">
           {[...items, ...items].map((l, i) => (
-            <div key={i} className="flex items-center gap-[12px]">
-              {l.src ? <Image src={l.src} alt="" width={l.w} height={l.h} unoptimized style={{ borderRadius: 8 }} /> : null}
+            <div key={i} className="flex items-center gap-[12px]" data-tone={l.tone}>
+              {/* a card with a tone holds a third party's logo on its own background: shown as supplied, no rounding */}
+              {l.src ? <Image src={l.src} alt={l.alt ?? ""} width={l.w} height={l.h} unoptimized style={l.tone ? undefined : { borderRadius: 8 }} /> : null}
               {l.label ? <span className="t-logo">{l.label}</span> : null}
             </div>
           ))}

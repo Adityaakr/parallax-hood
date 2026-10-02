@@ -17,6 +17,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNetworkLabel } from "@/lib/api";
+import { ROBINHOOD_CHAIN, isRobinhoodChain } from "@/lib/logos";
 import { Ic } from "./icons";
 import { ELIGIBILITY_NOTICE, EligibilityDialog, useEligibility } from "./Eligibility";
 import { Faucet } from "./Faucet";
@@ -98,7 +99,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="toolbar">
           {/* the network, named by the resolver that answers for it, and its kind in capitals so a test chain is never mistaken for the real one */}
           <span className="ws net" data-kind={label.kind} title={fromResolver ? `Chain id ${label.chainId}, as reported by the resolver` : `Chain id ${label.chainId}. The resolver is not answering, so this label comes from the app's own configuration.`}>
-            <span className="net-dot" aria-hidden />
+            {/* Robinhood Chain, its testnet or a fork of it wears the chain's own badge; any other chain keeps the plain dot */}
+            {isRobinhoodChain(label.chainId)
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={ROBINHOOD_CHAIN.avatar} alt="Robinhood Chain" width={26} height={26} className="net-badge" />
+              : <span className="net-dot" aria-hidden />}
             <span className="body-sm font-medium truncate">{label.name}</span>
             <span className="tag net-kind">{label.kind}</span>
           </span>

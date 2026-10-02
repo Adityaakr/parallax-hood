@@ -57,7 +57,14 @@ export const FOOTER = {
  */
 export const LOGOS = {
   caption: "[ Seven stocks, two indices ]",
-  items: ["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA", "pxMAG7", "pxAI"].map((label) => ({ src: "", w: 0, h: 0, label })) as { src: string; w: number; h: number; label: string }[],
+  // The chain's own logo on Robin Neon, alone on its card as its brand guidelines ask, then each stock with its
+  // company mark and each index with its token mark.
+  items: [
+    { src: "/brand/robinhood-chain-logo-black.svg", w: 198, h: 26, label: "", alt: "Robinhood Chain", tone: "neon" },
+    ...["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA"].map((label) => ({ src: `/stocks/${label.toLowerCase()}.svg`, w: 34, h: 34, label })),
+    { src: "/tokens/pxmag7.svg", w: 34, h: 34, label: "pxMAG7" },
+    { src: "/tokens/pxai.svg", w: 34, h: 34, label: "pxAI" },
+  ] as { src: string; w: number; h: number; label: string; alt?: string; tone?: "neon" }[],
 };
 
 export const FAQS = {

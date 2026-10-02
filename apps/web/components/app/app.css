@@ -293,6 +293,8 @@
 /* Network chip: the name the resolver reports and its kind. A dot and a filled tag, so the kind reads at a glance. */
 .app-canvas .ws.net { cursor: default; padding: 8px 10px 8px 14px; max-width: 100%; }
 .app-canvas .net-dot { width: 8px; height: 8px; border-radius: 8px; background: var(--warn); flex: none; }
+.app-canvas .net-badge { width: 26px; height: 26px; border-radius: 8px; flex: none; }
+.app-canvas .ws.net:has(.net-badge) { padding-left: 8px; }
 .app-canvas .net[data-kind="mainnet"] .net-dot { background: var(--good); }
 .app-canvas .net-kind { border-color: transparent; background: rgba(180, 83, 9, .14); color: var(--warn); white-space: nowrap; }
 .app-canvas .net[data-kind="mainnet"] .net-kind { background: rgba(31, 122, 69, .12); color: var(--good); }

@@ -120,6 +120,8 @@
 /* measured on the reference: 50 px/s leftward, no pause on hover; 7 tiles × 207px = 1449px per loop */
 .logos { display: flex; gap: 7px; width: max-content; animation: marquee 28.98s linear infinite; }
 .logos > div { width: 200px; height: 100px; border-radius: 10px; background: var(--color-card-1); display: flex; align-items: center; justify-content: center; flex: none; }
+/* Robinhood Chain's logo: black on Robin Neon is one of its three approved pairings, in both themes; the wider card gives it its clear space */
+.logos > div[data-tone="neon"] { width: 280px; background: #ccff00; }
 @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
 /* ---------- feature card: 1220 × 514, shell 7; copy 603 × 500 padding 30; visual 603 × 500 ---------- */

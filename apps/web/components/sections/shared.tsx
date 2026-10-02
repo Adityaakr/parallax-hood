@@ -99,7 +99,7 @@ export function PlansSection({ on = 7, logos = false }: { on?: number; logos?: b
                 if (c.kind === "stocks") return <StocksPlanCard key={c.name} c={c} />;
                 const b = live?.[c.symbol];
                 const ret = b?.performance.returns[period];
-                // lettered marks only: the marketing site shows no issuer or company logos
+                // no URL from here: StockLogo falls back to the local company mark for each ticker
                 const marks = c.tickers.map((t) => ({ ticker: t, logoUrl: null }));
                 return (
                   <Link key={c.symbol} href={`/baskets/${c.symbol}`} className="icard">
