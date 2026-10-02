@@ -54,8 +54,26 @@ export function useApiPost<TIn, TOut>(path: string | ((v: TIn) => string)) {
 // ---- shapes (subset of the resolver's responses) ----
 // Every field named `usdg…` is a raw 6-decimal integer string. Shares, ratios, units and stock-token amounts are 1e18-scaled.
 
-/** Which network the resolver serves and what on it is a stand-in. `mocked` is empty on mainnet and on a fork of it. */
-export type NetworkLabel = { name: string; kind: NetworkKind; chainId: number; explorer: string | null; mocked: string[] };
+/**
+ * Which network the resolver serves, what on it is a stand-in and what is read live from the real market.
+ * `mocked` is empty on mainnet and on a fork of it. `live` is empty on a mock network priced from its own
+ * snapshot, and `liveFrom` names the network the live figures come from when that is not this one.
+ */
+export type NetworkLabel = { name: string; kind: NetworkKind; chainId: number; explorer: string | null; mocked: string[]; live?: string[]; liveFrom?: string | null };
+type Session = { whole: boolean; fractional: boolean };
+/** What the issuer says about a stock, read by the resolver from Robinhood's Stock Token API. Prices are decimal USD strings. */
+export type Issuer = {
+  source: string; token: `0x${string}`; status: string | null; isin: string | null; multiplier: string;
+  pendingMultiplier: { multiplier: string; effectiveAt: number | null } | null;
+  sessions: { market: Session; extended: Session; overnight: Session } | null;
+  /** bid, ask and mid are per underlying share; null when the quote route did not answer */
+  quote: { bid: string; ask: string; mid: string; tokenBid: string | null; tokenAsk: string | null; dailyHigh: string | null; dailyLow: string | null; dailyVolume: string | null; halted: boolean; generatedAt: number } | null;
+};
+export type CorporateAction = { id: string; type: string; status: string; processDate: string | null; symbol: string; summary: string; details: Record<string, string> };
+/** `actions` is null when the issuer's API is off on this network or not answering; an empty list means it answered with none. */
+export type CorporateActions = { ticker: string; source: string | null; actions: CorporateAction[] | null };
+/** The mirror that keeps a test network on mainnet's prices: who signs, and when every stock last matched. */
+export type MirrorBrief = { operator: `0x${string}` | null; intervalS: number; thresholdBps: number; lastRunAt: number | null; lastInSyncAt: number | null; lastWriteAt: number | null; writes: number; error: string | null };
 export type Rep = {
   token: `0x${string}`; symbol: string; platform: string; ratio: string; ratioSource: "KEEPER" | "ERC8056"; ratioUpdatedAt: number;
   pendingMultiplier: { multiplier: string; effectiveAt: number } | null; buyEligible: boolean; sellEligible: boolean; active: boolean;
@@ -64,9 +82,9 @@ export type Rep = {
 };
 export type Stock = {
   ticker: string; id: string; active: boolean; name?: string | null; logoUrl?: string | null; referencePrice: string | null; referenceSource: string; referenceUpdatedAt: number | null;
-  market: { open: boolean; nextOpenTime: number | null; nextCloseTime: number | null; source: string; reason?: string }; representations: Rep[];
+  market: { open: boolean; nextOpenTime: number | null; nextCloseTime: number | null; source: string; reason?: string }; issuer?: Issuer | null; representations: Rep[];
 };
-export type StocksResponse = { dataSource: "live" | "fixture"; stocks: Stock[] };
+export type StocksResponse = { dataSource: "live" | "fixture"; stocks: Stock[]; hybrid?: { markets: string; execution: string } | null };
 export type Candidate = {
   platform: string; token: string; symbol: string; ratio: string; ratioSource: string; venue: string; tokensOut: string; sharesOut: string; effectiveCostUsd: string;
   costPerShareUsd: string; premiumBps: number; pricePremiumBps?: number; slippageBps: number; priceImpactBps?: number; marketOpen: boolean; registryEligible: boolean; eligible: boolean; reasons: string[];
@@ -155,7 +173,7 @@ export type RedeemQuote = {
 };
 /** `amount_in` is in the units of `token_in`: raw USDG (6 decimals) on a buy or a mint, stock tokens (18) on a sell. */
 export type Receipt = { tx_hash: string; log_index: number; block_number: number; emitter: string; quote_hash: string; actor: string; underlying: string; token_in: string; amount_in: string; representation: string; tokens_out: string; shares_out: string; ratio: string; action: string; timestamp: number; quote: boolean };
-export type Health = { ok: boolean; block: string | null; chainId: number; label: NetworkLabel; quoteOnly?: boolean; hybrid?: { markets: string; execution: string } | null; faucet?: boolean; deployment: { usdg: `0x${string}`; registry: `0x${string}`; router: `0x${string}`; factory: `0x${string}`; mandate: `0x${string}`; venue?: string } };
+export type Health = { ok: boolean; block: string | null; chainId: number; label: NetworkLabel; quoteOnly?: boolean; hybrid?: { markets: string; execution: string } | null; mirror?: MirrorBrief | null; faucet?: boolean; deployment: { usdg: `0x${string}`; registry: `0x${string}`; router: `0x${string}`; factory: `0x${string}`; mandate: `0x${string}`; venue?: string } };
 
 /**
  * The network as the resolver describes it, which is what the shell prints on every screen. When the resolver

@@ -2,9 +2,9 @@
 import { use, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
-import { useApi, useApiPost, type ResolveResponse, type Stock, type StocksResponse, type Health, type WalletView, type SellResponse } from "@/lib/api";
+import { useApi, useApiPost, type ResolveResponse, type Stock, type StocksResponse, type Health, type WalletView, type SellResponse, type CorporateActions } from "@/lib/api";
 import { useDepth } from "@/lib/depth";
-import { fmt, fmtUsdg, usd, bps, dt, compactUsd, usdgNumber, venueName, platformName } from "@/lib/format";
+import { fmt, fmtUsdg, usd, bps, dt, ago, compactUsd, usdgNumber, venueName, platformName } from "@/lib/format";
 import { Loading, ErrorState, Banner, PlatformTag, Tag, A } from "@/components/ui";
 import { TxButton } from "@/components/TxButton";
 import { DepthChart } from "@/components/app/DepthChart";
@@ -33,6 +33,8 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
   const stock = useApi<Stock & { dataSource: string }>(`/stocks/${T}`, { refetchInterval: 20_000 });
   const stocks = useApi<StocksResponse>("/stocks");
   const health = useApi<Health>("/health");
+  /* dividends and splits as the issuer reports them; refreshed hourly, which is how often the issuer's list changes */
+  const actions = useApi<CorporateActions>(`/stocks/${T}/corporate-actions`, { refetchInterval: 3_600_000 });
   const resolve = useApiPost<{ ticker: string; usdAmount: string; wallet?: string; policy: Record<string, unknown> }, ResolveResponse>("/resolve");
   /* selling needs what this wallet actually holds of this stock, per token */
   const wallet = useApi<WalletView>(address ? `/wallet/${address}` : null, { refetchInterval: 30_000 });
@@ -72,6 +74,12 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
   /* USDG in the token's direct Uniswap v3 pools (raw, 6 decimals) and the fee tiers holding it */
   const poolUsd = reps.reduce((a, x) => a + usdgNumber(x.poolUsdg), 0);
   const poolTiers = Array.from(new Set(reps.flatMap((x) => x.poolFees ?? []))).sort((a, b) => a - b);
+  /* Robinhood's own quote and trading sessions for this stock, when the resolver reads its API on this network */
+  const issuer = stock.data?.issuer ?? null;
+  const iq = issuer?.quote ?? null;
+  const sessions = issuer?.sessions ? (["market", "extended", "overnight"] as const).filter((k) => issuer.sessions![k].whole) : null;
+  /* a test network priced from mainnet fills at one price, so its cost curve is flat */
+  const testVenue = Boolean(health.data?.hybrid);
 
   return (
     <div className="grid xl:grid-cols-[minmax(0,1fr)_460px] gap-4 items-start">
@@ -104,7 +112,7 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
                     </span>
                   )}
                   {stock.data && (
-                    <span className="chip"><span className={`dot ${stock.data.market.open ? "dot-good" : "dot-warn"}`} style={{ marginRight: 0 }} />Market {stock.data.market.open ? "open" : "closed"}{!stock.data.market.open && stock.data.market.nextOpenTime ? ` · opens ${dt(stock.data.market.nextOpenTime)}` : ""}</span>
+                    <span className="chip"><span className={`dot ${stock.data.market.open ? "dot-good" : "dot-warn"}`} style={{ marginRight: 0 }} />{stock.data.market.reason === "HALTED" ? "Trading halted" : `Market ${stock.data.market.open ? "open" : "closed"}`}{!stock.data.market.open && stock.data.market.nextOpenTime ? ` · opens ${dt(stock.data.market.nextOpenTime)}` : ""}</span>
                   )}
                   <span className="muted">reference · {stock.data?.referenceSource ?? "…"}</span>
                 </div>
@@ -129,7 +137,7 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
             <div className="body-xs muted">
               {metric === "price"
                 ? "What one share of the underlying has done, from the stock's Chainlink feed where the network has one. The feeds update 24 hours a day, 5 days a week, and stop over the weekend."
-                : `Cost per underlying share as the order size grows, quoted through the resolver. The dashed orange line is the reference price.${stock.data?.dataSource === "fixture" ? " On this network the token, the venue and the reference price are mocks." : ""}`}
+                : `Cost per underlying share as the order size grows, quoted through the resolver. The dashed orange line is the reference price.${stock.data?.dataSource === "fixture" ? " On this network the token, the venue and the reference price are mocks." : testVenue ? " The venue on this network is a test one that fills any size at mainnet's pool price, so the curve shows no price impact; pool depth above is the real market's." : ""}`}
             </div>
           </div>
         </section>
@@ -184,6 +192,46 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
             </div>
           )}
         </section>
+
+        {/* Dividends and splits change the token's multiplier, which is why Parallax counts shares and not tokens. */}
+        {actions.data?.source && (
+          <section className="panel">
+            <div className="panel-head">
+              <span>Corporate actions</span>
+              <span className="body-sm muted">reported by Robinhood{issuer ? ` · multiplier ${Number(issuer.multiplier).toFixed(6)}` : ""}</span>
+            </div>
+            {issuer?.pendingMultiplier && (
+              <div className="px-5 pt-4">
+                <Banner kind="warn">
+                  A multiplier change to {Number(issuer.pendingMultiplier.multiplier).toFixed(6)} is scheduled{issuer.pendingMultiplier.effectiveAt ? ` for ${dt(issuer.pendingMultiplier.effectiveAt * 1000)}` : ""}. Quotes stay in underlying shares, so the share count you are quoted does not change with it.
+                </Banner>
+              </div>
+            )}
+            {actions.data.actions === null ? (
+              <div className="p-5 body-sm muted">Robinhood&apos;s API is not answering, so nothing is listed here.</div>
+            ) : actions.data.actions.length === 0 ? (
+              <div className="p-5 body-sm muted">Robinhood lists no corporate action for {T}.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="grid">
+                  <thead><tr><th>Process date</th><th>Action</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {actions.data.actions.slice(0, 6).map((a) => (
+                      <tr key={`${a.id}-${a.processDate}-${a.type}`}>
+                        <td className="num whitespace-nowrap">{a.processDate ?? "not scheduled"}</td>
+                        <td className="body-sm">{a.summary}</td>
+                        <td><span className={a.status === "COMPLETED" ? "tag tag-blue" : "tag"}>{a.status === "COMPLETED" ? "completed" : a.status === "IN_PROGRESS" ? "in progress" : a.status.toLowerCase()}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="px-5 py-4 border-t line body-xs muted">
+              From Robinhood&apos;s Stock Token API. The process date is the issuer&apos;s scheduling date, not a payable date. A dividend or a split reaches holders through the token&apos;s on-chain multiplier.
+            </div>
+          </section>
+        )}
       </div>
 
       {/* ---------- right: market overview + trade panel ---------- */}
@@ -195,10 +243,16 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
           </div>
           <div className="stat-grid">
             <div className="stat"><div className="stat-label"><Ic.up />Reference</div><div className="stat-value">{stock.data?.referencePrice ? usd(stock.data.referencePrice) : "…"}</div><div className="stat-sub">{stock.data?.referenceSource ?? "source"}</div></div>
-            <div className="stat"><div className="stat-label"><Ic.clock />Market</div><div className="stat-value">{stock.data ? (stock.data.market.open ? "Open" : "Closed") : "…"}</div><div className="stat-sub">{stock.data ? `status via ${stock.data.market.source}` : ""}</div></div>
+            <div className="stat"><div className="stat-label"><Ic.clock />Market</div><div className="stat-value">{stock.data ? (stock.data.market.reason === "HALTED" ? "Halted" : stock.data.market.open ? "Open" : "Closed") : "…"}</div><div className="stat-sub">{stock.data ? (stock.data.market.source === "issuer" ? "halt reported by Robinhood" : stock.data.market.source === "computed" ? "Chainlink's 24/5 schedule" : `status via ${stock.data.market.source}`) : ""}</div></div>
             <div className="stat"><div className="stat-label"><Ic.layers />Shares per token</div><div className="stat-value">{reps.length === 1 ? fmt(reps[0]!.ratio, 18, 6) : stock.data ? `${reps.length} tokens` : "…"}</div><div className="stat-sub">{reps.length === 1 ? (reps[0]!.ratioSource === "ERC8056" ? "the token's on-chain multiplier" : "posted ratio") : issuers.map(platformName).join(" · ")}</div></div>
             <div className="stat"><div className="stat-label"><Ic.target />Best route</div><div className="stat-value">{best ? best.symbol : r ? "none" : "…"}</div><div className="stat-sub">{best ? `${bps(best.premiumBps)} incl. gas` : "under this policy"}</div></div>
             <div className="stat"><div className="stat-label"><Ic.shield />Pool depth</div><div className="stat-value">{!stock.data ? "…" : poolUsd > 0 ? compactUsd(poolUsd) : "n/a"}</div><div className="stat-sub">{poolTiers.length ? `USDG in direct Uniswap v3 pools, ${poolTiers.map((f) => `${f / 10_000}%`).join(" and ")}` : "no direct Uniswap v3 pool on this network"}</div></div>
+            {issuer && (
+              <>
+                <div className="stat"><div className="stat-label"><Ic.target />Robinhood bid / ask</div><div className="stat-value" style={{ fontSize: 20 }}>{iq ? `${usd(iq.bid)} / ${usd(iq.ask)}` : "n/a"}</div><div className="stat-sub">{iq ? `the issuer's quote per share, ${ago(iq.generatedAt)}${iq.dailyLow && iq.dailyHigh ? ` · day ${usd(iq.dailyLow)} to ${usd(iq.dailyHigh)}` : ""}` : "Robinhood's API did not answer"}</div></div>
+                <div className="stat"><div className="stat-label"><Ic.clock />Sessions</div><div className="stat-value">{sessions ? `${sessions.length} of 3` : "n/a"}</div><div className="stat-sub">{sessions ? (sessions.length ? `tradable at Robinhood: ${sessions.join(", ")}` : "Robinhood lists no tradable session") : "not reported by the issuer"}{iq?.dailyVolume ? ` · ${Number(iq.dailyVolume).toLocaleString("en-US")} shares today` : ""}</div></div>
+              </>
+            )}
             <div className="stat"><div className="stat-label"><Ic.chart />Venue</div><div className="stat-value" style={{ fontSize: 20 }}>{best ? venueName(best.venue) : "…"}</div><div className="stat-sub">where this order would fill</div></div>
           </div>
         </section>

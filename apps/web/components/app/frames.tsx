@@ -47,7 +47,8 @@ function useSource() {
   const h = useLive<Health>("/health");
   if (h.state === "loading") return "…";
   if (!h.data?.label) return "resolver not reachable";
-  return `${h.data.label.name}${h.data.label.mocked.length ? " · mock data" : ""}`;
+  const { mocked, live } = h.data.label;
+  return `${h.data.label.name}${mocked.length ? (live?.length ? " · live prices, test tokens" : " · mock data") : ""}`;
 }
 const Down = () => <div className="p-4 text-[12px] muted">The resolver is not reachable, so there is nothing to show here.</div>;
 const Wait = () => <div className="p-4 text-[12px] muted">Reading from the resolver…</div>;

@@ -17,6 +17,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNetworkLabel } from "@/lib/api";
+import { ago } from "@/lib/format";
 import { ROBINHOOD_CHAIN, isRobinhoodChain } from "@/lib/logos";
 import { Ic } from "./icons";
 import { ELIGIBILITY_NOTICE, EligibilityDialog, useEligibility } from "./Eligibility";
@@ -35,7 +36,7 @@ const NAV: { label: string; icon: keyof typeof Ic; href: string; match: string[]
 export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const path = usePathname();
-  const { label, fromResolver } = useNetworkLabel();
+  const { label, fromResolver, health } = useNetworkLabel();
   const { confirmed, confirm } = useEligibility();
   const locked = confirmed !== true;
   const [q, setQ] = useState("");
@@ -124,14 +125,24 @@ export function AppShell({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        {label.mocked.length > 0 && (
+        {label.mocked.length > 0 && (label.live?.length ? (
+          /* a test network priced from the real market: say which figures are live and which things are test stand-ins */
+          <div className="mock-banner" data-live role="note">
+            <span className="tag net-kind">Live market data</span>
+            <span>
+              <b>Real prices, test tokens.</b> Reference prices, pool depth, multipliers and Robinhood&apos;s quotes are read live from {label.liveFrom ?? "the chain"}.
+              {" "}Test stand-ins on this network: {label.mocked.join(", ")}.
+              {health?.mirror && <> The venue is kept on mainnet&apos;s pool prices{health.mirror.lastInSyncAt ? ` (last matched ${ago(health.mirror.lastInSyncAt)})` : ""}.{health.mirror.error ? ` The mirror reported: ${health.mirror.error}.` : ""}</>}
+            </span>
+          </div>
+        ) : (
           <div className="mock-banner" role="note">
             <span className="tag net-kind">Mock data</span>
             <span>
               <b>Test network.</b> Mocked here: {label.mocked.join(", ")}. Nothing on this screen is a real market.
             </span>
           </div>
-        )}
+        ))}
 
         <main className="app-main">{children}</main>
 

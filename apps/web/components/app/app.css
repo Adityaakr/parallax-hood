@@ -302,6 +302,8 @@
 .app-canvas .mock-banner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; border-radius: 10px;
   border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent); background: rgba(180, 83, 9, .07); font-size: 14px; line-height: 19.6px; color: var(--color-heading); }
 .app-canvas .mock-banner b { font-weight: 600; }
+/* the same strip on a test network priced from the real market: informative, not a warning */
+.app-canvas .mock-banner[data-live] { border-color: color-mix(in srgb, var(--good) 50%, transparent); background: color-mix(in srgb, var(--good) 7%, transparent); }
 /* Shell footer: the eligibility notice, on every product page. */
 .app-canvas .app-foot { margin-top: auto; padding-top: 18px; border-top: var(--dash); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 24px;
   font-size: 12.8px; line-height: 18px; color: var(--muted); }

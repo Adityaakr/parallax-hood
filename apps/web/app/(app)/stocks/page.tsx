@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useApi, type StocksResponse } from "@/lib/api";
 import { LIST_QUOTE_USD, useBestRoutes } from "@/lib/best";
 import { Loading, ErrorState, PlatformTag } from "@/components/ui";
-import { usd, bps, compactUsd, usdgNumber, venueName, platformName } from "@/lib/format";
+import { usd, bps, ago, compactUsd, usdgNumber, venueName, platformName } from "@/lib/format";
 import { Ic } from "@/components/app/icons";
 import { StockLogo } from "@/components/app/StockLogo";
 
@@ -22,6 +22,8 @@ export default function Stocks() {
   const rows = (stocks.data?.stocks ?? []).filter((s) => !needle || s.ticker.toLowerCase().includes(needle) || (s.name ?? "").toLowerCase().includes(needle) || s.representations.some((r) => r.symbol.toLowerCase().includes(needle)));
   const issuers = Array.from(new Set((stocks.data?.stocks ?? []).flatMap((s) => s.representations.map((r) => r.platform))));
   const reps = (stocks.data?.stocks ?? []).reduce((n, s) => n + s.representations.length, 0);
+  /* the issuer's own quote, where the resolver reads Robinhood's API on this network */
+  const hasIssuer = (stocks.data?.stocks ?? []).some((s) => s.issuer);
 
   return (
     <div className="flex flex-col gap-4">
@@ -52,7 +54,7 @@ export default function Stocks() {
       <section className="panel">
         <div className="panel-head">
           <span>{q.trim() ? `Results for “${q.trim()}”` : "Stocks on this network"}</span>
-          <span className="body-sm muted">{pricing ? "quoting every stock…" : stocks.data ? (stocks.data.dataSource === "live" ? "read from the chain" : "mock tokens and mock prices") : ""}</span>
+          <span className="body-sm muted">{pricing ? "quoting every stock…" : stocks.data ? (stocks.data.dataSource !== "live" ? "mock tokens and mock prices" : stocks.data.hybrid ? "prices live from Robinhood Chain mainnet and Robinhood" : "read from the chain") : ""}</span>
         </div>
         {stocks.isLoading && <div className="p-5"><Loading rows={4} /></div>}
         <div className="px-5"><ErrorState error={stocks.error} retry={() => stocks.refetch()} /></div>
@@ -79,7 +81,15 @@ export default function Stocks() {
                           </span>
                         </span>
                       </td>
-                      <td className="num" title={s.referenceSource}>{usd(s.referencePrice)}</td>
+                      <td className="num" title={s.referenceSource}>
+                        {usd(s.referencePrice)}
+                        {/* under it, the issuer's own bid and ask for the share, where the resolver reads Robinhood's API */}
+                        {hasIssuer && (
+                          <span className="block body-xs muted whitespace-nowrap" title={s.issuer?.quote ? `Robinhood's own quote per underlying share, ${ago(s.issuer.quote.generatedAt)}` : "Robinhood's API did not answer for this stock"}>
+                            {s.issuer?.quote ? `Robinhood ${usd(s.issuer.quote.bid)} / ${usd(s.issuer.quote.ask)}` : "Robinhood n/a"}
+                          </span>
+                        )}
+                      </td>
                       <td className="num">{b ? <span className="font-medium">{usd(b.costPerShareUsd, 2)}</span> : pricing ? <span className="skeleton inline-block w-20 h-4" /> : "n/a"}</td>
                       <td className="num">{b ? <span className="inline-flex items-center gap-1" style={{ color: b.premiumBps <= 0 ? "var(--good)" : undefined }}>{b.premiumBps <= 0 ? <Ic.up width={14} height={14} /> : <Ic.down width={14} height={14} />}{bps(b.premiumBps)}</span> : "n/a"}</td>
                       <td className="body-sm whitespace-nowrap">{b ? venueName(b.venue) : "n/a"}</td>
@@ -89,12 +99,13 @@ export default function Stocks() {
                           {s.representations.map((r) => (
                             <span key={r.token} className="inline-flex items-center gap-1.5" title={`${r.symbol} · ${platformName(r.platform)} · ${r.buyEligible ? "buy-eligible" : "not buy-eligible right now"}`}>
                               <span className="num">{(Number(r.ratio) / 1e18).toFixed(6)}</span>
-                              <PlatformTag platform={r.platform} />
+                              {/* with one issuer on the network the chip above already names it */}
+                              {issuers.length > 1 && <PlatformTag platform={r.platform} />}
                             </span>
                           ))}
                         </span>
                       </td>
-                      <td className="body-sm">{s.market.open ? "open" : "closed"}</td>
+                      <td className="body-sm">{s.market.reason === "HALTED" ? "halted" : s.market.open ? "open" : "closed"}</td>
                       <td className="text-right"><Link className="btn btn-sm" href={`/buy/${s.ticker}`} onClick={(e) => e.stopPropagation()}>Buy</Link></td>
                     </tr>
                   );
@@ -104,7 +115,7 @@ export default function Stocks() {
           </div>
         )}
         <div className="px-5 py-4 border-t line body-xs muted">
-          Quote / share is the resolver&apos;s quote for a {usd(LIST_QUOTE_USD, 0)} USDG buy, per underlying share, with venue fees, price impact and gas included. Pool depth is the USDG held in the token&apos;s direct Uniswap v3 pools. Open a stock for a quote at your own size and the reason any route was excluded.
+          Quote / share is the resolver&apos;s quote for a {usd(LIST_QUOTE_USD, 0)} USDG buy, per underlying share, with venue fees, price impact and gas included. Pool depth is the USDG held in the token&apos;s direct Uniswap v3 pools.{hasIssuer ? " Under each reference price is Robinhood's own bid and ask for the underlying share, from its Stock Token API." : ""} Open a stock for a quote at your own size and the reason any route was excluded.
         </div>
       </section>
 

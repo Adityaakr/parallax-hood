@@ -33,7 +33,7 @@ export const dt = (ms: number | null | undefined) => (ms ? new Date(ms).toLocale
 /** How a venue label from the resolver reads on screen: `uniswap-v3:100>500` is a two-hop route through WETH. */
 export const venueName = (v: string) => {
   const m = /^uniswap-v3:(\d+)(?:>(\d+))?$/.exec(v);
-  if (!m) return v === "mock" ? "mock venue" : v;
+  if (!m) return v === "mock" ? "test venue" : v;
   const pct = (f: string) => `${Number(f) / 10_000}%`;
   return m[2] ? `Uniswap v3 · ${pct(m[1]!)} then ${pct(m[2])} via WETH` : `Uniswap v3 · ${pct(m[1]!)}`;
 };
