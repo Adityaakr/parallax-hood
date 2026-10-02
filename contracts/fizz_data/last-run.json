@@ -1,0 +1,1232 @@
+{
+  "version": 1,
+  "createdAt": "2026-09-22T10:21:32.691Z",
+  "projectRoot": ".",
+  "suiteDir": "test/fizz",
+  "metaDir": "fizz_data",
+  "contracts": [
+    {
+      "name": "AgentMandate",
+      "sourcePath": "src/AgentMandate.sol",
+      "sourceHash": "sha256:ccd768515967a9ddfeeb3d11f46a9b1891f60c4efc4d8aec9f5b348edef2784f",
+      "constructor": {
+        "inputs": [
+          {
+            "name": "router_",
+            "type": "contract",
+            "internalType": "IShareRouter"
+          },
+          {
+            "name": "registry_",
+            "type": "contract",
+            "internalType": "IStockRegistry"
+          },
+          {
+            "name": "usdt_",
+            "type": "contract",
+            "internalType": "IERC20"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      "functions": [
+        {
+          "name": "agentBuyShares",
+          "inputs": [
+            {
+              "name": "id",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "underlyingId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "usdtIn",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "minShares",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "legs",
+              "type": "array",
+              "internalType": "LegExecutor.Leg[]"
+            },
+            {
+              "name": "quoteHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "agentBuyShares(uint256,bytes32,uint256,uint256,LegExecutor.Leg[],bytes32)"
+        },
+        {
+          "name": "agentMintBasket",
+          "inputs": [
+            {
+              "name": "id",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "basket",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "units",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "maxUsdtIn",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "legs",
+              "type": "array",
+              "internalType": "LegExecutor.Leg[]"
+            },
+            {
+              "name": "quoteHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "agentMintBasket(uint256,address,uint256,uint256,LegExecutor.Leg[],bytes32)"
+        },
+        {
+          "name": "createMandate",
+          "inputs": [
+            {
+              "name": "agent",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "perTxCapUsdt",
+              "type": "uint128",
+              "internalType": "uint128"
+            },
+            {
+              "name": "dailyCapUsdt",
+              "type": "uint128",
+              "internalType": "uint128"
+            },
+            {
+              "name": "expiry",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "maxSlippageBps",
+              "type": "uint16",
+              "internalType": "uint16"
+            },
+            {
+              "name": "underlyings",
+              "type": "array",
+              "internalType": "bytes32[]"
+            },
+            {
+              "name": "baskets",
+              "type": "array",
+              "internalType": "address[]"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "createMandate(address,uint128,uint128,uint64,uint16,bytes32[],address[])"
+        },
+        {
+          "name": "revoke",
+          "inputs": [
+            {
+              "name": "id",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "revoke(uint256)"
+        },
+        {
+          "name": "setAllowedBasket",
+          "inputs": [
+            {
+              "name": "id",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "basket",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "allowed",
+              "type": "bool",
+              "internalType": "bool"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "setAllowedBasket(uint256,address,bool)"
+        },
+        {
+          "name": "setAllowedUnderlying",
+          "inputs": [
+            {
+              "name": "id",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "underlyingId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "allowed",
+              "type": "bool",
+              "internalType": "bool"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "setAllowedUnderlying(uint256,bytes32,bool)"
+        }
+      ]
+    },
+    {
+      "name": "BasketVault",
+      "sourcePath": "src/BasketVault.sol",
+      "sourceHash": "sha256:0a1e0863faa082cb976e8e8c80c9a314b7edaf76a93e4f82aa8651553495e4b7",
+      "constructor": {
+        "inputs": [
+          {
+            "name": "name_",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "symbol_",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "registry_",
+            "type": "contract",
+            "internalType": "IStockRegistry"
+          },
+          {
+            "name": "constituents_",
+            "type": "array",
+            "internalType": "IBasketVault.Constituent[]"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      "functions": [
+        {
+          "name": "approve",
+          "inputs": [
+            {
+              "name": "spender",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "value",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "approve(address,uint256)"
+        },
+        {
+          "name": "migrate",
+          "inputs": [
+            {
+              "name": "underlyingId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "legs",
+              "type": "array",
+              "internalType": "LegExecutor.Leg[]"
+            },
+            {
+              "name": "minShareGain",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "quoteHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "migrate(bytes32,LegExecutor.Leg[],uint256,bytes32)"
+        },
+        {
+          "name": "mint",
+          "inputs": [
+            {
+              "name": "units",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "maxUsdtIn",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "legs",
+              "type": "array",
+              "internalType": "LegExecutor.Leg[]"
+            },
+            {
+              "name": "recipient",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "quoteHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "mint(uint256,uint256,LegExecutor.Leg[],address,bytes32)"
+        },
+        {
+          "name": "redeem",
+          "inputs": [
+            {
+              "name": "units",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "minUsdtOut",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "legs",
+              "type": "array",
+              "internalType": "LegExecutor.Leg[]"
+            },
+            {
+              "name": "recipient",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "quoteHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "redeem(uint256,uint256,LegExecutor.Leg[],address,bytes32)"
+        },
+        {
+          "name": "redeemInKind",
+          "inputs": [
+            {
+              "name": "units",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "recipient",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "redeemInKind(uint256,address)"
+        },
+        {
+          "name": "redeemInKindSkipping",
+          "inputs": [
+            {
+              "name": "units",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "recipient",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "skip",
+              "type": "array",
+              "internalType": "address[]"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "redeemInKindSkipping(uint256,address,address[])"
+        },
+        {
+          "name": "transfer",
+          "inputs": [
+            {
+              "name": "to",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "value",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "transfer(address,uint256)"
+        },
+        {
+          "name": "transferFrom",
+          "inputs": [
+            {
+              "name": "from",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "to",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "value",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "transferFrom(address,address,uint256)"
+        }
+      ]
+    },
+    {
+      "name": "ShareRouter",
+      "sourcePath": "src/ShareRouter.sol",
+      "sourceHash": "sha256:c447cae394f5398cb71f9d14778301e9ef8b9106c16551d897040c8d733d34f0",
+      "constructor": {
+        "inputs": [
+          {
+            "name": "registry_",
+            "type": "contract",
+            "internalType": "IStockRegistry"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      "functions": [
+        {
+          "name": "buyShares",
+          "inputs": [
+            {
+              "name": "underlyingId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "usdtIn",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "minShares",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "legs",
+              "type": "array",
+              "internalType": "LegExecutor.Leg[]"
+            },
+            {
+              "name": "recipient",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "quoteHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "buyShares(bytes32,uint256,uint256,LegExecutor.Leg[],address,bytes32)"
+        },
+        {
+          "name": "sellShares",
+          "inputs": [
+            {
+              "name": "underlyingId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "representation",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "tokenAmount",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "minUsdtOut",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "legs",
+              "type": "array",
+              "internalType": "LegExecutor.Leg[]"
+            },
+            {
+              "name": "recipient",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "quoteHash",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "sellShares(bytes32,address,uint256,uint256,LegExecutor.Leg[],address,bytes32)"
+        }
+      ]
+    },
+    {
+      "name": "StockRegistry",
+      "sourcePath": "src/StockRegistry.sol",
+      "sourceHash": "sha256:a849a14c3353c35749d7c7d11ac4431fdb76391edefd3f5fa24bbdaca4a52b1f",
+      "constructor": {
+        "inputs": [
+          {
+            "name": "admin",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "usdt_",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      "functions": [
+        {
+          "name": "addRepresentation",
+          "inputs": [
+            {
+              "name": "token",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "underlyingId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "platformId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "source",
+              "type": "enum",
+              "internalType": "IStockRegistry.RatioSource"
+            },
+            {
+              "name": "initialRatio",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "addRepresentation(address,bytes32,bytes32,IStockRegistry.RatioSource,uint256)"
+        },
+        {
+          "name": "checkpointRatio",
+          "inputs": [
+            {
+              "name": "token",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "checkpointRatio(address)"
+        },
+        {
+          "name": "confirmRatio",
+          "inputs": [
+            {
+              "name": "token",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "ratio",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "confirmRatio(address,uint256)"
+        },
+        {
+          "name": "grantRole",
+          "inputs": [
+            {
+              "name": "role",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "account",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "grantRole(bytes32,address)"
+        },
+        {
+          "name": "postAttestation",
+          "inputs": [
+            {
+              "name": "platformId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "attestedAt_",
+              "type": "uint64",
+              "internalType": "uint64"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "postAttestation(bytes32,uint64)"
+        },
+        {
+          "name": "postMarketState",
+          "inputs": [
+            {
+              "name": "underlyingId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "open",
+              "type": "bool",
+              "internalType": "bool"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "postMarketState(bytes32,bool)"
+        },
+        {
+          "name": "postRatio",
+          "inputs": [
+            {
+              "name": "token",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "ratio",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "postRatio(address,uint256)"
+        },
+        {
+          "name": "postReferencePrice",
+          "inputs": [
+            {
+              "name": "underlyingId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "priceUsd",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "postReferencePrice(bytes32,uint256)"
+        },
+        {
+          "name": "renounceRole",
+          "inputs": [
+            {
+              "name": "role",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "callerConfirmation",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "renounceRole(bytes32,address)"
+        },
+        {
+          "name": "revokeRole",
+          "inputs": [
+            {
+              "name": "role",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "account",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "revokeRole(bytes32,address)"
+        },
+        {
+          "name": "setAllowedTarget",
+          "inputs": [
+            {
+              "name": "target",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "allowed",
+              "type": "bool",
+              "internalType": "bool"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "setAllowedTarget(address,bool)"
+        },
+        {
+          "name": "setBuysPaused",
+          "inputs": [
+            {
+              "name": "paused",
+              "type": "bool",
+              "internalType": "bool"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "setBuysPaused(bool)"
+        },
+        {
+          "name": "setFee",
+          "inputs": [
+            {
+              "name": "feeBps_",
+              "type": "uint16",
+              "internalType": "uint16"
+            },
+            {
+              "name": "recipient",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "setFee(uint16,address)"
+        },
+        {
+          "name": "setLimits",
+          "inputs": [
+            {
+              "name": "maxAttestationAge_",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "maxRatioAge_",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "maxRatioStepBps_",
+              "type": "uint16",
+              "internalType": "uint16"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "setLimits(uint64,uint64,uint16)"
+        },
+        {
+          "name": "setPriceFeed",
+          "inputs": [
+            {
+              "name": "underlyingId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "feed",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "setPriceFeed(bytes32,address)"
+        },
+        {
+          "name": "setPriceLimits",
+          "inputs": [
+            {
+              "name": "maxPriceAge_",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "maxPriceStepBps_",
+              "type": "uint16",
+              "internalType": "uint16"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "setPriceLimits(uint64,uint16)"
+        },
+        {
+          "name": "setRepresentationActive",
+          "inputs": [
+            {
+              "name": "token",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "active",
+              "type": "bool",
+              "internalType": "bool"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "setRepresentationActive(address,bool)"
+        },
+        {
+          "name": "setUnderlying",
+          "inputs": [
+            {
+              "name": "id",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "ticker",
+              "type": "string",
+              "internalType": "string"
+            },
+            {
+              "name": "active",
+              "type": "bool",
+              "internalType": "bool"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "setUnderlying(bytes32,string,bool)"
+        }
+      ]
+    }
+  ],
+  "handlers": {
+    "AgentMandateHandler.sol": "sha256:5f8539451f4efa039edc01d953552b74fca3268354d4ac9b3fc1aec7c99e263f",
+    "BasketVaultHandler.sol": "sha256:c80ecfc40c159baf8fe05460bc860e660618004f5665ca9b575d73e94ab7d125",
+    "Handlers.sol": "sha256:dcc18e9275e42a627909234cd519dceffbcb902204bca7ebd13bbb3f4bd62688",
+    "ShareRouterHandler.sol": "sha256:556769b676b4c0c3134aabc159e6e794d8a09fffdc31774a04ca1abe0d62f752",
+    "StockRegistryHandler.sol": "sha256:bd6f820f633fb713a2da714a311a879c792d50556201ef6c4d166c9744836d00"
+  },
+  "properties": [
+    {
+      "id": "GL-01",
+      "checkbox": "x",
+      "functionName": "property_heldSharesIsSumOfRepresentationShares",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-02",
+      "checkbox": "x",
+      "functionName": "property_basketSupplyEqualsHolders",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-03",
+      "checkbox": "x",
+      "functionName": "property_routerHoldsOnlyDonations",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-04",
+      "checkbox": "x",
+      "functionName": "property_mandateHoldsOnlyDonations",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-05",
+      "checkbox": "x",
+      "functionName": "property_feeRecipientBalanceMatchesChargedFees",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-06",
+      "checkbox": "x",
+      "functionName": "property_spentInWindowMatchesGhostSum",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-07",
+      "checkbox": "x",
+      "functionName": "property_mandateBookkeepingIsConsistent",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-08",
+      "checkbox": "x",
+      "functionName": "property_compositionShareBpsSumsToBps",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-09",
+      "checkbox": "x",
+      "functionName": "property_basketFactoryBookkeepingConsistent",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-10",
+      "checkbox": "-",
+      "functionName": null,
+      "file": null
+    },
+    {
+      "id": "GL-11",
+      "checkbox": "x",
+      "functionName": "property_shareMath_tokensRoundTripNeverGrows",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-12",
+      "checkbox": "x",
+      "functionName": "property_shareMath_sharesRoundTripNeverShrinks",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-13",
+      "checkbox": "x",
+      "functionName": "property_sharesForTokens_roundsDownAndZeroSafe",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-14",
+      "checkbox": "x",
+      "functionName": "property_tokensForShares_roundsUpAndZeroSafe",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-15",
+      "checkbox": "x",
+      "functionName": "property_requiredShares_roundsUp",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-16",
+      "checkbox": "x",
+      "functionName": "property_proRata_boundedAndSubAdditive",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-17",
+      "checkbox": "x",
+      "functionName": "property_shareMath_monotonic",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-18",
+      "checkbox": "x",
+      "functionName": "property_agentMandate_floorsMonotonicAndZeroSafe",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-19",
+      "checkbox": "x",
+      "functionName": "property_ratioNeverCompoundsPastStepWithinWindow",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-20",
+      "checkbox": "x",
+      "functionName": "property_representationIdentityImmutable",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-21",
+      "checkbox": "x",
+      "functionName": "property_revokedMandateStaysInactive",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-22",
+      "checkbox": "x",
+      "functionName": "property_representationExistsIsPermanent",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-23",
+      "checkbox": "x",
+      "functionName": "property_buysPausedChangesOnlyViaSetBuysPaused",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-24",
+      "checkbox": "x",
+      "functionName": "property_mandateNextIdMonotonicNoReuse",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-25",
+      "checkbox": "x",
+      "functionName": "property_attestationTimestampMonotone",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-26",
+      "checkbox": "x",
+      "functionName": "property_representationCountNeverShrinks",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-27",
+      "checkbox": "x",
+      "functionName": "property_underlyingIdsMonotoneNoDuplicates",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-28",
+      "checkbox": "-",
+      "functionName": null,
+      "file": null
+    },
+    {
+      "id": "GL-29",
+      "checkbox": "x",
+      "functionName": "property_representationRatioNeverZero",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-30",
+      "checkbox": "x",
+      "functionName": "property_noDanglingApprovalToVenue",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-31",
+      "checkbox": "x",
+      "functionName": "property_mandateOwnerAgentImmutable",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-32",
+      "checkbox": "x",
+      "functionName": "property_basketConstituentSetImmutable",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-33",
+      "checkbox": "-",
+      "functionName": null,
+      "file": null
+    },
+    {
+      "id": "GL-34",
+      "checkbox": "-",
+      "functionName": null,
+      "file": null
+    },
+    {
+      "id": "GL-35",
+      "checkbox": "-",
+      "functionName": null,
+      "file": null
+    },
+    {
+      "id": "GL-36",
+      "checkbox": "x",
+      "functionName": "property_vaultNeverHoldsOwnUnits",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-37",
+      "checkbox": "x",
+      "functionName": "property_issuerCapOrDiluting",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-01",
+      "checkbox": "x",
+      "functionName": "roundTrip_mintRedeemInKind",
+      "file": "test/fizz/handlers/BasketVaultHandler.sol"
+    },
+    {
+      "id": "SP-02",
+      "checkbox": "x",
+      "functionName": "roundTrip_mintRedeemFullSell_zeroFee",
+      "file": "test/fizz/handlers/BasketVaultHandler.sol"
+    },
+    {
+      "id": "SP-03",
+      "checkbox": "x",
+      "functionName": "roundTrip_mintRedeemInKind_Ncycles",
+      "file": "test/fizz/handlers/BasketVaultHandler.sol"
+    },
+    {
+      "id": "SP-04",
+      "checkbox": "x",
+      "functionName": "shareRouter_buyThenSell",
+      "file": "test/fizz/handlers/ShareRouterHandler.sol"
+    },
+    {
+      "id": "SP-05",
+      "checkbox": "x",
+      "functionName": "stockRegistry_toggleActiveSanity",
+      "file": "test/fizz/handlers/StockRegistryHandler.sol"
+    },
+    {
+      "id": "SP-06",
+      "checkbox": "x",
+      "functionName": "_prop_mandateAllowanceResetAfterAgentCall",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-07",
+      "checkbox": "x",
+      "functionName": "agentMandate_revoke_atMaxUtilization",
+      "file": "test/fizz/handlers/AgentMandateHandler.sol"
+    },
+    {
+      "id": "SP-08",
+      "checkbox": "x",
+      "functionName": "agentMandate_agentBuyShares_afterRevoke",
+      "file": "test/fizz/handlers/AgentMandateHandler.sol"
+    },
+    {
+      "id": "SP-09",
+      "checkbox": "-",
+      "functionName": null,
+      "file": null
+    },
+    {
+      "id": "SP-10",
+      "checkbox": "x",
+      "functionName": "shareRouter_buyShares_dustBatch",
+      "file": "test/fizz/handlers/ShareRouterHandler.sol"
+    },
+    {
+      "id": "SP-11",
+      "checkbox": "-",
+      "functionName": null,
+      "file": null
+    },
+    {
+      "id": "SP-12",
+      "checkbox": "x",
+      "functionName": "stockRegistry_adminFn_wrongCaller",
+      "file": "test/fizz/handlers/StockRegistryHandler.sol"
+    },
+    {
+      "id": "SP-13",
+      "checkbox": "x",
+      "functionName": "stockRegistry_roleMix_wrongCaller",
+      "file": "test/fizz/handlers/StockRegistryHandler.sol"
+    },
+    {
+      "id": "SP-14",
+      "checkbox": "x",
+      "functionName": "agentMandate_agentBuyShares_wrongCaller",
+      "file": "test/fizz/handlers/AgentMandateHandler.sol"
+    },
+    {
+      "id": "SP-15",
+      "checkbox": "x",
+      "functionName": "agentMandate_ownerFn_wrongCaller",
+      "file": "test/fizz/handlers/AgentMandateHandler.sol"
+    },
+    {
+      "id": "SP-16",
+      "checkbox": "x",
+      "functionName": "stockRegistry_setFee_unclamped",
+      "file": "test/fizz/handlers/StockRegistryHandler.sol"
+    },
+    {
+      "id": "SP-17",
+      "checkbox": "x",
+      "functionName": "basketVault_transferSelf_clamped",
+      "file": "test/fizz/handlers/BasketVaultHandler.sol"
+    }
+  ]
+}

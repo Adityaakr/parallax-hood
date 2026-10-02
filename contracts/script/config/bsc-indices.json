@@ -1,0 +1,533 @@
+{
+  "_note": "BSC mainnet (56), index universe only: the 19 underlyings the pxMAG7 / pxAI / pxNEW indices hold and every Ondo/bStocks representation of them (generated from bsc.json by scripts/gen-mainnet-indices-config.py). The remaining bsc.json underlyings are added later with ConfigureRegistry once the deployer holds more BNB; the registry is additive.",
+  "chainId": 56,
+  "usdt": "0x55d398326f99059fF775485246999027B3197955",
+  "allowedTargets": [
+    "0x13f4EA83D0bd40E75C8222255bc855a974568Dd4",
+    "0x1b81D678ffb9C0263b24A97847620C99d213eB14",
+    "0xB44446b0c8E56988c34f7Ff73Ae904982b5FdDA5"
+  ],
+  "priceFeeds": {
+    "_note": "Chainlink USD feeds on BSC mainnet (docs/recon.md \u00a76, 8 decimals, 24h heartbeat). Underlyings without a feed get the keeper's Binance referencePrice.",
+    "NVDA": "0xea5c2Cbb5cD57daC24E26180b19a929F3E9699B8",
+    "AAPL": "0xb7Ed5bE7977d61E83534230f3256C021e0fae0B6",
+    "MSFT": "0x5D209cE1fBABeAA8E6f9De4514A74FFB4b34560F",
+    "AMZN": "0x51d08ca89d3e8c12535BA8AEd33cDf2557ab5b2a",
+    "GOOGL": "0xeDA73F8acb669274B15A977Cb0cdA57a84F18c2a",
+    "META": "0xfc76E9445952A3C31369dFd26edfdfb9713DF5Bb",
+    "TSLA": "0xEEA2ae9c074E87596A85ABE698B2Afebc9B57893"
+  },
+  "basket": {
+    "name": "Parallax Magnificent 7",
+    "symbol": "pxMAG7",
+    "constituents": [
+      {
+        "ticker": "NVDA",
+        "weightBps": 1429,
+        "sharesPerUnit": "64389672419231280",
+        "maxIssuerBps": 10000
+      },
+      {
+        "ticker": "AAPL",
+        "weightBps": 1429,
+        "sharesPerUnit": "42471984593574456",
+        "maxIssuerBps": 10000
+      },
+      {
+        "ticker": "MSFT",
+        "weightBps": 1429,
+        "sharesPerUnit": "28864021976246260",
+        "maxIssuerBps": 10000
+      },
+      {
+        "ticker": "AMZN",
+        "weightBps": 1428,
+        "sharesPerUnit": "56103406278238312",
+        "maxIssuerBps": 10000
+      },
+      {
+        "ticker": "GOOGL",
+        "weightBps": 1429,
+        "sharesPerUnit": "40716890813767944",
+        "maxIssuerBps": 10000
+      },
+      {
+        "ticker": "META",
+        "weightBps": 1428,
+        "sharesPerUnit": "21280400572246064",
+        "maxIssuerBps": 10000
+      },
+      {
+        "ticker": "TSLA",
+        "weightBps": 1428,
+        "sharesPerUnit": "39098650165649040",
+        "maxIssuerBps": 10000
+      }
+    ]
+  },
+  "_universe": "42 underlyings (40 tokenized by both Ondo and bStocks, the rest index constituents listed by one), from the Binance Web3 RWA catalogue",
+  "indices": [
+    {
+      "name": "Parallax Magnificent 7",
+      "symbol": "pxMAG7",
+      "thesis": "The seven US megacaps that dominate index returns, equal-weighted so no single name decides the unit.",
+      "unitValueUsd": 100,
+      "constituents": [
+        {
+          "ticker": "NVDA",
+          "weightBps": 1429,
+          "sharesPerUnit": "64389672419231280",
+          "maxIssuerBps": 10000
+        },
+        {
+          "ticker": "AAPL",
+          "weightBps": 1429,
+          "sharesPerUnit": "42471984593574456",
+          "maxIssuerBps": 10000
+        },
+        {
+          "ticker": "MSFT",
+          "weightBps": 1429,
+          "sharesPerUnit": "28864021976246260",
+          "maxIssuerBps": 10000
+        },
+        {
+          "ticker": "AMZN",
+          "weightBps": 1428,
+          "sharesPerUnit": "56103406278238312",
+          "maxIssuerBps": 10000
+        },
+        {
+          "ticker": "GOOGL",
+          "weightBps": 1429,
+          "sharesPerUnit": "40716890813767944",
+          "maxIssuerBps": 10000
+        },
+        {
+          "ticker": "META",
+          "weightBps": 1428,
+          "sharesPerUnit": "21280400572246064",
+          "maxIssuerBps": 10000
+        },
+        {
+          "ticker": "TSLA",
+          "weightBps": 1428,
+          "sharesPerUnit": "39098650165649040",
+          "maxIssuerBps": 10000
+        }
+      ]
+    },
+    {
+      "name": "Parallax AI Infrastructure",
+      "symbol": "pxAI",
+      "thesis": "The picks and shovels of AI compute: silicon, networking, memory, foundry and rented GPUs, not the model labs.",
+      "unitValueUsd": 100,
+      "constituents": [
+        {
+          "ticker": "NVDA",
+          "weightBps": 2500,
+          "sharesPerUnit": "112648132293966560",
+          "maxIssuerBps": 10000
+        },
+        {
+          "ticker": "AMD",
+          "weightBps": 1500,
+          "sharesPerUnit": "27007562117392872",
+          "maxIssuerBps": 10000
+        },
+        {
+          "ticker": "AVGO",
+          "weightBps": 1500,
+          "sharesPerUnit": "42020337843516264",
+          "maxIssuerBps": 10000
+        },
+        {
+          "ticker": "TSM",
+          "weightBps": 1500,
+          "sharesPerUnit": "34693311129614212",
+          "maxIssuerBps": 10000
+        },
+        {
+          "ticker": "MRVL",
+          "weightBps": 1000,
+          "sharesPerUnit": "41356492969396192",
+          "maxIssuerBps": 10000
+        },
+        {
+          "ticker": "MU",
+          "weightBps": 1000,
+          "sharesPerUnit": "9879665672113658",
+          "maxIssuerBps": 10000
+        },
+        {
+          "ticker": "CRWV",
+          "weightBps": 1000,
+          "sharesPerUnit": "123014679919923840",
+          "maxIssuerBps": 10000
+        }
+      ]
+    },
+    {
+      "name": "Parallax Private & Newly Public",
+      "symbol": "pxNEW",
+      "thesis": "Exposure that is hard to get in a normal brokerage account: a pre-IPO name plus recent listings, tokenized.",
+      "unitValueUsd": 100,
+      "constituents": [
+        {
+          "ticker": "SPCX",
+          "weightBps": 2500,
+          "sharesPerUnit": "163805530074695296",
+          "maxIssuerBps": 10000
+        },
+        {
+          "ticker": "CRCL",
+          "weightBps": 1500,
+          "sharesPerUnit": "163327526132404160",
+          "maxIssuerBps": 10000
+        },
+        {
+          "ticker": "CRWV",
+          "weightBps": 1500,
+          "sharesPerUnit": "184522019879885760",
+          "maxIssuerBps": 10000
+        },
+        {
+          "ticker": "COIN",
+          "weightBps": 1500,
+          "sharesPerUnit": "77128753599341840",
+          "maxIssuerBps": 10000
+        },
+        {
+          "ticker": "HOOD",
+          "weightBps": 1500,
+          "sharesPerUnit": "125849484017115536",
+          "maxIssuerBps": 10000
+        },
+        {
+          "ticker": "PLTR",
+          "weightBps": 1000,
+          "sharesPerUnit": "56481219994351880",
+          "maxIssuerBps": 10000
+        },
+        {
+          "ticker": "NBIS",
+          "weightBps": 500,
+          "sharesPerUnit": "22596827405432276",
+          "maxIssuerBps": 10000
+        }
+      ]
+    }
+  ],
+  "_allowedTargets_note": "PancakeSwap SmartRouter, PancakeSwap v3 SwapRouter, and the Binance aggregator router (quotes reach Kipseli, Metric, Uniswap v3/v4, Tessera and the RFQ desks). Every one is admin-gated and only ever called by LegExecutor, which trusts balance deltas.",
+  "underlyings": [
+    "AAPL",
+    "AMD",
+    "AMZN",
+    "AVGO",
+    "COIN",
+    "CRCL",
+    "CRWV",
+    "GOOGL",
+    "HOOD",
+    "META",
+    "MRVL",
+    "MSFT",
+    "MU",
+    "NBIS",
+    "NVDA",
+    "PLTR",
+    "SPCX",
+    "TSLA",
+    "TSM"
+  ],
+  "representations": [
+    {
+      "ticker": "AAPL",
+      "platform": "ondo",
+      "symbol": "AAPLon",
+      "token": "0x390a684ef9cade28a7ad0dfa61ab1eb3842618c4",
+      "source": "KEEPER",
+      "initialRatio": "1003376073740221058"
+    },
+    {
+      "ticker": "AMD",
+      "platform": "bstock",
+      "symbol": "AMDB",
+      "token": "0x75fd4cf6f8392e41e70391d60c90c0d5211603a1",
+      "source": "ERC8056",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "AMD",
+      "platform": "ondo",
+      "symbol": "AMDon",
+      "token": "0x9f16e46c73b43bdb70861247d537bee4ea18f639",
+      "source": "KEEPER",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "AMZN",
+      "platform": "ondo",
+      "symbol": "AMZNon",
+      "token": "0x4553cfe1c09f37f38b12dc509f676964e392f8fc",
+      "source": "KEEPER",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "AVGO",
+      "platform": "bstock",
+      "symbol": "AVGOB",
+      "token": "0x76682c454467b3a1150ad8b6a92fc5ee2c21d7ed",
+      "source": "ERC8056",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "AVGO",
+      "platform": "ondo",
+      "symbol": "AVGOon",
+      "token": "0x0ed2e3180edf393e6bf8db124bd15ddd54de150a",
+      "source": "KEEPER",
+      "initialRatio": "1005138064669851499"
+    },
+    {
+      "ticker": "COIN",
+      "platform": "bstock",
+      "symbol": "COINB",
+      "token": "0x585bde7c54abb5ccd7791f923d6c2187635f3952",
+      "source": "ERC8056",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "COIN",
+      "platform": "ondo",
+      "symbol": "COINon",
+      "token": "0xf8589b526fdd65f7f301c605a6e04f0f1b4b3620",
+      "source": "KEEPER",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "CRCL",
+      "platform": "bstock",
+      "symbol": "CRCLB",
+      "token": "0x80f3d493ebce97e343c53d29a137942416b4ffc0",
+      "source": "ERC8056",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "CRCL",
+      "platform": "ondo",
+      "symbol": "CRCLon",
+      "token": "0x992879cd8ce0c312d98648875b5a8d6d042cbf34",
+      "source": "KEEPER",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "CRWV",
+      "platform": "bstock",
+      "symbol": "CRWVB",
+      "token": "0x33e7317e17838fee56b10fe8d0b9ca6ca3090c95",
+      "source": "ERC8056",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "CRWV",
+      "platform": "ondo",
+      "symbol": "CRWVon",
+      "token": "0x76e39171cb665a35981e744e2ceb7012f76caeac",
+      "source": "KEEPER",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "GOOGL",
+      "platform": "bstock",
+      "symbol": "GOOGLB",
+      "token": "0x3f53de71c126bdabae20f9cd64848d317f6c3238",
+      "source": "ERC8056",
+      "initialRatio": "1000478058978107511"
+    },
+    {
+      "ticker": "GOOGL",
+      "platform": "ondo",
+      "symbol": "GOOGLon",
+      "token": "0x091fc7778e6932d4009b087b191d1ee3bac5729a",
+      "source": "KEEPER",
+      "initialRatio": "1002460326637435211"
+    },
+    {
+      "ticker": "HOOD",
+      "platform": "bstock",
+      "symbol": "HOODB",
+      "token": "0xa394dcea3fd3847fd793afbfd163e2e3858b7c65",
+      "source": "ERC8056",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "HOOD",
+      "platform": "ondo",
+      "symbol": "HOODon",
+      "token": "0x19601179a60f55ff6636f5d1a8b6671053bd60a8",
+      "source": "KEEPER",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "META",
+      "platform": "bstock",
+      "symbol": "METAB",
+      "token": "0x7425889fe94f9d693e8daefe88bcced6acfef4c0",
+      "source": "ERC8056",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "META",
+      "platform": "ondo",
+      "symbol": "METAon",
+      "token": "0xd7df5863a3e742f0c767768cdfcb63f09e0422f6",
+      "source": "KEEPER",
+      "initialRatio": "1002279106693300137"
+    },
+    {
+      "ticker": "MRVL",
+      "platform": "bstock",
+      "symbol": "MRVLB",
+      "token": "0x16cd4fe7e8880ecc3ba222795229e20489fc2c76",
+      "source": "ERC8056",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "MRVL",
+      "platform": "ondo",
+      "symbol": "MRVLon",
+      "token": "0x1501ec83ffef405b4331cc4f73277a40fb0c627d",
+      "source": "KEEPER",
+      "initialRatio": "1001483825466955279"
+    },
+    {
+      "ticker": "MSFT",
+      "platform": "bstock",
+      "symbol": "MSFTB",
+      "token": "0x80106cb3ead06659a5ad19df39d9b4733863b9b0",
+      "source": "ERC8056",
+      "initialRatio": "1001313964833366845"
+    },
+    {
+      "ticker": "MSFT",
+      "platform": "ondo",
+      "symbol": "MSFTon",
+      "token": "0x6bfe75d1ad432050ea973c3a3dcd88f02e2444c3",
+      "source": "KEEPER",
+      "initialRatio": "1005730856892783903"
+    },
+    {
+      "ticker": "MU",
+      "platform": "bstock",
+      "symbol": "MUB",
+      "token": "0xcdf2f3e0fa43c47a6662a91c9e4a7c5f69762699",
+      "source": "ERC8056",
+      "initialRatio": "1000107512568805603"
+    },
+    {
+      "ticker": "MU",
+      "platform": "ondo",
+      "symbol": "MUon",
+      "token": "0x8b6acf6041a81567f012ff6a4c6d96d5818d74bf",
+      "source": "KEEPER",
+      "initialRatio": "1001121237525844732"
+    },
+    {
+      "ticker": "NBIS",
+      "platform": "bstock",
+      "symbol": "NBISB",
+      "token": "0xe256bc2a4f5297f8ba6f043f180a46300ecbcbb1",
+      "source": "ERC8056",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "NBIS",
+      "platform": "ondo",
+      "symbol": "NBISon",
+      "token": "0xee268780473e7a0e47bac41547c6e01512555a16",
+      "source": "KEEPER",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "NVDA",
+      "platform": "bstock",
+      "symbol": "NVDAB",
+      "token": "0x02fca66c1d1afb4e2a7884261eb00f63598a7436",
+      "source": "ERC8056",
+      "initialRatio": "1000778223752807865"
+    },
+    {
+      "ticker": "NVDA",
+      "platform": "ondo",
+      "symbol": "NVDAon",
+      "token": "0xa9ee28c80f960b889dfbd1902055218cba016f75",
+      "source": "KEEPER",
+      "initialRatio": "1001715248795989800"
+    },
+    {
+      "ticker": "PLTR",
+      "platform": "bstock",
+      "symbol": "PLTRB",
+      "token": "0x0ca5d51d0277bd006fd9607d3e560785ebad8222",
+      "source": "ERC8056",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "PLTR",
+      "platform": "ondo",
+      "symbol": "PLTRon",
+      "token": "0x9351abd19f42101dd36025e495b98e910b255d78",
+      "source": "KEEPER",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "SPCX",
+      "platform": "bstock",
+      "symbol": "SPCXB",
+      "token": "0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1",
+      "source": "ERC8056",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "SPCX",
+      "platform": "ondo",
+      "symbol": "SPCXon",
+      "token": "0xd0a58bc9d88d3ff48c0294cb7e45937d0e41a928",
+      "source": "KEEPER",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "TSLA",
+      "platform": "bstock",
+      "symbol": "TSLAB",
+      "token": "0x5b1910eaad6450e50f816082aa078c41f10c292f",
+      "source": "ERC8056",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "TSLA",
+      "platform": "ondo",
+      "symbol": "TSLAon",
+      "token": "0x2494b603319d4d9f9715c9f4496d9e0364b59d93",
+      "source": "KEEPER",
+      "initialRatio": "1000000000000000000"
+    },
+    {
+      "ticker": "TSM",
+      "platform": "bstock",
+      "symbol": "TSMB",
+      "token": "0xab78b89b5bb00236be0b4b20704cbfa04efc711c",
+      "source": "ERC8056",
+      "initialRatio": "1002110464141050983"
+    },
+    {
+      "ticker": "TSM",
+      "platform": "ondo",
+      "symbol": "TSMon",
+      "token": "0xc37042a7a4fa510d8884a433762ab87257b91965",
+      "source": "KEEPER",
+      "initialRatio": "1009320746408453452"
+    }
+  ]
+}

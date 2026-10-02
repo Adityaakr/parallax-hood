@@ -1,0 +1,671 @@
+[
+  {
+    "name": "AgentMandate",
+    "sourcePath": "src/AgentMandate.sol",
+    "artifactPath": "out/AgentMandate.sol/AgentMandate.json",
+    "constructor": {
+      "inputs": [
+        {
+          "name": "router_",
+          "type": "contract",
+          "internalType": "IShareRouter"
+        },
+        {
+          "name": "registry_",
+          "type": "contract",
+          "internalType": "IStockRegistry"
+        },
+        {
+          "name": "usdt_",
+          "type": "contract",
+          "internalType": "IERC20"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    "functions": [
+      {
+        "name": "agentBuyShares",
+        "inputs": [
+          {
+            "name": "id",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "underlyingId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "usdtIn",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "minShares",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "legs",
+            "type": "array",
+            "internalType": "LegExecutor.Leg[]"
+          },
+          {
+            "name": "quoteHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "primary"
+      },
+      {
+        "name": "agentMintBasket",
+        "inputs": [
+          {
+            "name": "id",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "basket",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "units",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "maxUsdtIn",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "legs",
+            "type": "array",
+            "internalType": "LegExecutor.Leg[]"
+          },
+          {
+            "name": "quoteHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "primary"
+      },
+      {
+        "name": "createMandate",
+        "inputs": [
+          {
+            "name": "agent",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "perTxCapUsdt",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "dailyCapUsdt",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "expiry",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "maxSlippageBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "underlyings",
+            "type": "array",
+            "internalType": "bytes32[]"
+          },
+          {
+            "name": "baskets",
+            "type": "array",
+            "internalType": "address[]"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary"
+      },
+      {
+        "name": "revoke",
+        "inputs": [
+          {
+            "name": "id",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary"
+      },
+      {
+        "name": "setAllowedBasket",
+        "inputs": [
+          {
+            "name": "id",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "basket",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "allowed",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary"
+      },
+      {
+        "name": "setAllowedUnderlying",
+        "inputs": [
+          {
+            "name": "id",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "underlyingId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "allowed",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary"
+      }
+    ],
+    "hasReceive": false,
+    "hasFallback": false
+  },
+  {
+    "name": "BasketVault",
+    "sourcePath": "src/BasketVault.sol",
+    "artifactPath": "out/BasketVault.sol/BasketVault.json",
+    "constructor": {
+      "inputs": [
+        {
+          "name": "name_",
+          "type": "string",
+          "internalType": "string"
+        },
+        {
+          "name": "symbol_",
+          "type": "string",
+          "internalType": "string"
+        },
+        {
+          "name": "registry_",
+          "type": "contract",
+          "internalType": "IStockRegistry"
+        },
+        {
+          "name": "constituents_",
+          "type": "array",
+          "internalType": "IBasketVault.Constituent[]"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    "functions": [
+      {
+        "name": "migrate",
+        "inputs": [
+          {
+            "name": "underlyingId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "legs",
+            "type": "array",
+            "internalType": "LegExecutor.Leg[]"
+          },
+          {
+            "name": "minShareGain",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "quoteHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "primary"
+      },
+      {
+        "name": "mint",
+        "inputs": [
+          {
+            "name": "units",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "maxUsdtIn",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "legs",
+            "type": "array",
+            "internalType": "LegExecutor.Leg[]"
+          },
+          {
+            "name": "recipient",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "quoteHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "primary"
+      },
+      {
+        "name": "redeem",
+        "inputs": [
+          {
+            "name": "units",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "minUsdtOut",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "legs",
+            "type": "array",
+            "internalType": "LegExecutor.Leg[]"
+          },
+          {
+            "name": "recipient",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "quoteHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "primary"
+      },
+      {
+        "name": "redeemInKind",
+        "inputs": [
+          {
+            "name": "units",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "recipient",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "primary"
+      },
+      {
+        "name": "redeemInKindSkipping",
+        "inputs": [
+          {
+            "name": "units",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "recipient",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "skip",
+            "type": "array",
+            "internalType": "address[]"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary"
+      },
+      {
+        "name": "transfer",
+        "inputs": [
+          {
+            "name": "to",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "value",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary"
+      }
+    ],
+    "hasReceive": false,
+    "hasFallback": false
+  },
+  {
+    "name": "ShareRouter",
+    "sourcePath": "src/ShareRouter.sol",
+    "artifactPath": "out/ShareRouter.sol/ShareRouter.json",
+    "constructor": {
+      "inputs": [
+        {
+          "name": "registry_",
+          "type": "contract",
+          "internalType": "IStockRegistry"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    "functions": [
+      {
+        "name": "buyShares",
+        "inputs": [
+          {
+            "name": "underlyingId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "usdtIn",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "minShares",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "legs",
+            "type": "array",
+            "internalType": "LegExecutor.Leg[]"
+          },
+          {
+            "name": "recipient",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "quoteHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "primary"
+      },
+      {
+        "name": "sellShares",
+        "inputs": [
+          {
+            "name": "underlyingId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "representation",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "tokenAmount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "minUsdtOut",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "legs",
+            "type": "array",
+            "internalType": "LegExecutor.Leg[]"
+          },
+          {
+            "name": "recipient",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "quoteHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "primary"
+      }
+    ],
+    "hasReceive": false,
+    "hasFallback": false
+  },
+  {
+    "name": "StockRegistry",
+    "sourcePath": "src/StockRegistry.sol",
+    "artifactPath": "out/StockRegistry.sol/StockRegistry.json",
+    "constructor": {
+      "inputs": [
+        {
+          "name": "admin",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "usdt_",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    "functions": [
+      {
+        "name": "checkpointRatio",
+        "inputs": [
+          {
+            "name": "token",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary"
+      },
+      {
+        "name": "confirmRatio",
+        "inputs": [
+          {
+            "name": "token",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "ratio",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary"
+      },
+      {
+        "name": "postAttestation",
+        "inputs": [
+          {
+            "name": "platformId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "attestedAt_",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary"
+      },
+      {
+        "name": "postMarketState",
+        "inputs": [
+          {
+            "name": "underlyingId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "open",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary"
+      },
+      {
+        "name": "postRatio",
+        "inputs": [
+          {
+            "name": "token",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "ratio",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary"
+      },
+      {
+        "name": "postReferencePrice",
+        "inputs": [
+          {
+            "name": "underlyingId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "priceUsd",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary"
+      },
+      {
+        "name": "setBuysPaused",
+        "inputs": [
+          {
+            "name": "paused",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary"
+      },
+      {
+        "name": "setFee",
+        "inputs": [
+          {
+            "name": "feeBps_",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "recipient",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary"
+      },
+      {
+        "name": "setLimits",
+        "inputs": [
+          {
+            "name": "maxAttestationAge_",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "maxRatioAge_",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "maxRatioStepBps_",
+            "type": "uint16",
+            "internalType": "uint16"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary"
+      },
+      {
+        "name": "setRepresentationActive",
+        "inputs": [
+          {
+            "name": "token",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "active",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary"
+      }
+    ],
+    "hasReceive": false,
+    "hasFallback": false
+  }
+]
