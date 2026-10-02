@@ -1,0 +1,25 @@
+{
+  "name": "@parallax-hood/scripts",
+  "private": true,
+  "type": "module",
+  "description": "Operational scripts: universe generation, index creation, fork warm-up, end-to-end checks.",
+  "scripts": {
+    "gen-universe": "tsx gen-universe.mts",
+    "create-indices": "tsx create-indices.mts",
+    "warm-fork": "tsx warm-fork.mts",
+    "e2e:aggregator": "tsx e2e/aggregator-fork.mts",
+    "e2e:index-mint": "tsx e2e/index-mint.mts",
+    "capture": "node --no-warnings capture.ts",
+    "e2e:hybrid": "tsx e2e/hybrid-invest.mts"
+  },
+  "dependencies": {
+    "@parallax-hood/binance-client": "workspace:*",
+    "@parallax-hood/sdk": "workspace:*",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
