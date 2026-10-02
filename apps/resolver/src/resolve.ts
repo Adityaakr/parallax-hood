@@ -7,7 +7,7 @@ import { Venues } from "./providers/venues.js";
 import { PoolOracle } from "./providers/poolOracle.js";
 import { MarketHistory } from "./providers/marketHistory.js";
 import { computedMarketStatus, type MarketStatus } from "./providers/marketHours.js";
-import { scoreBuy, scoreSell, type ScoredCandidate } from "./scoring.js";
+import { scoreBuy, scoreSell, attestationRequired, type ScoredCandidate } from "./scoring.js";
 import { Simulator } from "./simulate.js";
 import { quoteHashOf } from "./quotes.js";
 import type { Db } from "./db.js";
@@ -142,7 +142,7 @@ export class Resolver {
      * the policy carried its own default of 36 hours, so raising the registry's window left every representation
      * blocked by a number nobody had asked for and the two could drift apart silently.
      */
-    if (p.policy?.maxAttestationAgeHours === undefined) policy.maxAttestationAgeHours = limits.maxAttestationAge / 3600;
+    if (p.policy?.maxAttestationAgeHours === undefined && attestationRequired(limits)) policy.maxAttestationAgeHours = limits.maxAttestationAge / 3600;
     const { candidates, chosen } = await scoreBuy(this.venues, {
       underlying: u, usdgIn, policy, referencePrice: ref?.price ?? null, market, limits, usdg: this.chain.d.usdg,
       executor: this.chain.d.router, gasUsd, walletHoldings: holdings, now,

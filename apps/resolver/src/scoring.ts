@@ -67,7 +67,8 @@ async function quoteCandidate(v: Venues, ctx: ScoringContext, rep: Representatio
   const reasons = reasonsForRegistry(rep, ctx.limits, now);
   const registryEligible = rep.buyEligible;
   const needsAttestation = attestationRequired(ctx.limits);
-  const attestationAgeHours = rep.attestedAt === 0 ? null : (now - rep.attestedAt) / 3600;
+  // no age is reported where the registry does not ask for an attestation: there is nothing it would be the age of
+  const attestationAgeHours = !needsAttestation || rep.attestedAt === 0 ? null : (now - rep.attestedAt) / 3600;
 
   const base: Omit<ScoredCandidate, "quote" | "sharesOutBig" | "tokensOutBig"> = {
     platform: rep.platform as Candidate["platform"],

@@ -403,7 +403,9 @@ export class Baskets {
     const mix = Object.entries(issuerMix).map(([platform, shares]) => ({ platform, bps: totalShares === 0n ? 0 : Number((shares * 10_000n) / totalShares) }));
     return {
       address: basket, name: meta.name, symbol: meta.symbol, totalSupply: meta.totalSupply.toString(), usdgBalance: meta.usdgBalance.toString(),
-      navPerUnitUsd: navKnown ? formatWad(navPerUnit, 4) : null, navSource: navKnown ? "chainlink/onchain (display only)" : "unavailable",
+      // named after where the constituents' prices actually came from, so a mock network's NAV is not called Chainlink's
+      navPerUnitUsd: navKnown ? formatWad(navPerUnit, 4) : null,
+      navSource: !navKnown ? "unavailable" : priced.every((x) => x.ref?.source.startsWith("chainlink")) ? "chainlink reference prices (display only)" : "posted reference prices, a snapshot (display only)",
       backingOk, issuerMix: mix, constituents,
     };
   }
