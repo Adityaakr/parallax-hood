@@ -1,10 +1,9 @@
 import { type Address, type Hex, encodeFunctionData, isAddress, getAddress } from "viem";
 import {
-  ShareRouterAbi, WAD, parseWad, formatWad, serializeLegs, tickerToId, sharesForTokens, PolicySchema, type Policy, type ResolveResult,
-  BSC_ADDRESSES, ChainlinkAggregatorAbi, feeOn } from "@parallax-hood/sdk";
+  ShareRouterAbi, WAD, USDG_UNIT, parseWad, formatWad, parseUsdg, formatUsdg, usdgToWad, serializeLegs, tickerToId, sharesForTokens, PolicySchema, type Policy, type ResolveResult,
+  ROBINHOOD_ADDRESSES, feeOn } from "@parallax-hood/sdk";
 import type { Chain, UnderlyingInfo } from "./chain.js";
 import { Venues } from "./providers/venues.js";
-import { BinanceProvider } from "./providers/binance.js";
 import { PoolOracle } from "./providers/poolOracle.js";
 import { MarketHistory } from "./providers/marketHistory.js";
 import { computedMarketStatus, type MarketStatus } from "./providers/marketHours.js";
@@ -15,7 +14,6 @@ import type { Db } from "./db.js";
 import { logger } from "./log.js";
 
 const log = logger("resolve");
-const BNB_USD_FEED = "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE" as Address;
 
 export type ReferencePrice = { price: bigint; source: string; updatedAt: number | null; alt?: { source: string; price: bigint } };
 
@@ -26,15 +24,16 @@ export class Resolver {
   /** Daily closes of the underlying stock, for the periods no onchain source reaches. */
   readonly marketHistory: MarketHistory;
   readonly sim: Simulator;
-  constructor(readonly chain: Chain, readonly binance: BinanceProvider, readonly db: Db) {
-    this.venues = new Venues(chain, binance);
+  constructor(readonly chain: Chain, readonly db: Db) {
+    this.venues = new Venues(chain);
     this.poolOracle = new PoolOracle(chain);
     this.marketHistory = new MarketHistory(chain.cfg.MARKET_HISTORY && !chain.isMocks, db, chain.cfg.MARKET_HISTORY_URL);
     this.sim = new Simulator(chain);
   }
 
+  /** "live" when prices and ratios are read from Robinhood Chain; "fixture" when a mock venue stands in for them. */
   get dataSource(): "live" | "fixture" {
-    return this.binance.mode === "fixtures" ? "fixture" : "live";
+    return this.chain.isMocks && !this.chain.isHybrid ? "fixture" : "live";
   }
 
   // ------------------------------------------------------------------
@@ -48,48 +47,64 @@ export class Resolver {
     return u;
   }
 
-  /** Reference price: Chainlink (onchain, live) first; Binance referencePrice as alternative/fallback; mock venue on mocks. */
+  /**
+   * Reference price in USD per underlying share. Where the registry is deployed with a feed it is the registry's
+   * own answer, which is the number the mandate's floor uses. Otherwise the Chainlink feed is read directly and,
+   * because Robinhood Chain's stock feeds price the token with its multiplier in it, divided by the token's
+   * ratio. A mock network without either falls back to the mock venue's price, and says so.
+   */
   async referencePrice(u: UnderlyingInfo): Promise<ReferencePrice | null> {
+    const hybrid = this.chain.isHybrid;
+    // a hybrid network prices against the real market, not against the mock registry's posted number
+    if (!hybrid) {
+      const onchain = await this.chain.registryPrice(u.id);
+      if (onchain) {
+        const fed = this.chain.catalogue.feed(u.ticker) !== null && !this.chain.isMocks;
+        return { price: onchain.price, source: fed ? `chainlink:${u.ticker}/USD via registry` : "registry reference price", updatedAt: onchain.updatedAt };
+      }
+    }
     const cl = await this.chain.chainlinkPrice(u.ticker);
-    let binancePx: bigint | null = null;
-    for (const r of u.representations) {
-      const t = await this.binance.token(r.token);
-      if (t?.referencePrice) {
-        binancePx = parseWad(t.referencePrice);
-        break;
-      }
+    const rep = u.representations[0];
+    if (cl && rep) {
+      const perToken = (cl.price * WAD) / 10n ** BigInt(cl.decimals);
+      // the feed belongs to the mainnet token: on a hybrid network that is the mock's twin, with its own multiplier
+      const ratio = hybrid ? await this.chain.mainnetMultiplier(this.chain.twin(rep.token)) : rep.ratio;
+      if (ratio && ratio > 0n) return { price: (perToken * WAD) / ratio, source: `chainlink:${u.ticker}/USD`, updatedAt: cl.updatedAt };
     }
-    if (cl) {
-      const price = (cl.price * WAD) / 10n ** BigInt(cl.decimals);
-      return { price, source: `chainlink:${u.ticker}/USD`, updatedAt: cl.updatedAt, alt: binancePx ? { source: "binance:referencePrice", price: binancePx } : undefined };
-    }
-    if (binancePx) return { price: binancePx, source: "binance:referencePrice", updatedAt: null };
-    if (this.chain.isMocks) {
+    if (this.chain.isMocks && rep) {
       // mock venue: share price = token price / ratio of the first representation
-      const r = u.representations[0];
-      if (r) {
-        const px = await this.chain.mockPrice(r.token);
-        if (px) return { price: (px * WAD) / r.ratio, source: "mock-venue (labeled fixture)", updatedAt: null };
-      }
+      const px = await this.chain.mockPrice(rep.token);
+      if (px) return { price: (px * WAD) / rep.ratio, source: "mock-venue (labeled fixture)", updatedAt: null };
     }
     return null;
   }
 
   async marketStatus(u: UnderlyingInfo): Promise<MarketStatus> {
-    const fromBinance = await this.binance.marketStatus(u.representations.map((r) => r.token));
-    if (fromBinance) return fromBinance;
-    if (this.chain.isMocks) return { open: u.marketState.open, nextOpenTime: null, nextCloseTime: null, source: "registry" };
+    if (this.chain.isMocks && !this.chain.isHybrid) return { open: u.marketState.open, nextOpenTime: null, nextCloseTime: null, source: "registry" };
     return computedMarketStatus();
   }
 
+  private ethUsd: { at: number; price: bigint } | null = null;
+
+  /** USD per ETH, 1e18-scaled, from the deepest WETH/USDG pool. Cached for a minute; null when no pool answers. */
+  private async ethUsdPrice(): Promise<bigint | null> {
+    if (this.ethUsd && Date.now() - this.ethUsd.at < 60_000) return this.ethUsd.price;
+    const probe = 10n ** 16n; // 0.01 WETH
+    const q = await this.venues.uniswap?.bestExactInput(ROBINHOOD_ADDRESSES.weth, this.chain.d.usdg, probe).catch(() => null);
+    if (!q) return null;
+    const price = (usdgToWad(q.amountOut) * WAD) / probe;
+    this.ethUsd = { at: Date.now(), price };
+    return price;
+  }
+
+  /** What the transaction costs in USD (1e18-scaled) at the current gas price, for `legs` swap legs. */
   async gasUsd(legs = 1): Promise<bigint> {
     try {
       const gasPrice = await this.chain.client.getGasPrice();
       const units = 150_000n + 120_000n * BigInt(legs);
-      if (this.chain.isMocks) return gasPrice * units * 600n; // gas wei * USD/BNB = USD wad; assume BNB = $600 on mocks
-      const r = await this.chain.client.readContract({ address: BNB_USD_FEED, abi: ChainlinkAggregatorAbi, functionName: "latestRoundData" });
-      const bnbUsd = (r[1] * WAD) / 10n ** 8n; // USD wad per BNB
-      return (gasPrice * units * bnbUsd) / WAD; // (wei * USDwad) / 1e18 = USD wad
+      // a mock chain has no ETH market; $3,000 is a round placeholder that only ever prices mock gas
+      const ethUsd = this.chain.isMocks ? 3_000n * WAD : await this.ethUsdPrice();
+      return ethUsd ? (gasPrice * units * ethUsd) / WAD : 0n;
     } catch {
       return 0n;
     }
@@ -112,8 +127,8 @@ export class Resolver {
   async resolveBuy(p: { ticker: string; usdAmount: string; policy?: Partial<Policy>; wallet?: string; recipient?: string }): Promise<ResolveResult> {
     const policy = PolicySchema.parse(p.policy ?? {});
     const u = await this.underlyingByTicker(p.ticker);
-    const usdtIn = parseWad(p.usdAmount);
-    if (usdtIn <= 0n) throw new Error("usdAmount must be positive");
+    const usdgIn = parseUsdg(p.usdAmount);
+    if (usdgIn <= 0n) throw new Error("usdAmount must be at least one millionth of a USDG");
     const wallet = p.wallet && isAddress(p.wallet) ? getAddress(p.wallet) : undefined;
     const recipient = p.recipient && isAddress(p.recipient) ? getAddress(p.recipient) : wallet;
     const [ref, market, limits, gasUsd, holdings, fee] = await Promise.all([
@@ -127,31 +142,17 @@ export class Resolver {
      */
     if (p.policy?.maxAttestationAgeHours === undefined) policy.maxAttestationAgeHours = limits.maxAttestationAge / 3600;
     const { candidates, chosen } = await scoreBuy(this.venues, {
-      underlying: u, usdtIn, policy, referencePrice: ref?.price ?? null, market, limits, usdt: this.chain.d.usdt,
+      underlying: u, usdgIn, policy, referencePrice: ref?.price ?? null, market, limits, usdg: this.chain.d.usdg,
       executor: this.chain.d.router, gasUsd, walletHoldings: holdings, now,
     });
 
     let status: ResolveResult["status"] = chosen ? "ok" : "no_route";
     if (!market.open && !policy.allowClosedMarket && chosen) status = "queued_until_open";
 
-    // Aggregator legs are priced with a placeholder; fetch the real calldata now, with the executing contract as
-    // the taker. A route that cannot be materialised leaves the transaction unbuilt and says why.
-    let unroutable: string | null = null;
-    if (chosen && status === "ok" && !this.chain.isQuoteOnly) {
-      const legs = [...chosen.legs];
-      for (let i = 0; i < legs.length && !unroutable; i++) {
-        if (legs[i]!.data !== "0x") continue;
-        const m = await this.venues.materializeLeg(legs[i]!, this.chain.d.router, BigInt(policy.maxSlippageBps));
-        if (m.ok) legs[i] = m.leg;
-        else unroutable = m.reason;
-      }
-      if (!unroutable) chosen.legs = legs;
-    }
-
     const record = {
       underlying: u.ticker,
       side: "buy" as const,
-      usdAmount: formatWad(usdtIn, 6),
+      usdAmount: formatUsdg(usdgIn),
       timestamp: now,
       referencePrice: ref ? formatWad(ref.price, 6) : "0",
       referenceSource: ref?.source ?? "unavailable",
@@ -160,15 +161,14 @@ export class Resolver {
       nextOpenTime: market.nextOpenTime,
       candidates: candidates.map(stripCandidate),
       chosen: chosen
-        ? { legs: serializeLegs(chosen.legs), sharesOut: chosen.sharesOut.toString(), minShares: chosen.minShares.toString(), usdtIn: chosen.usdtIn.toString(), split: chosen.split, why: chosen.why }
+        ? { legs: serializeLegs(chosen.legs), sharesOut: chosen.sharesOut.toString(), minShares: chosen.minShares.toString(), usdgIn: chosen.usdgIn.toString(), split: chosen.split, why: chosen.why }
         : null,
-      // the protocol fee is charged on the notional spent, on top of it; the router pulls usdtIn + fee and refunds the unspent rest
-      fee: { bps: fee.bps, usdt: chosen ? feeOn(chosen.usdtIn, fee.bps).toString() : "0", totalUsdtIn: chosen ? (chosen.usdtIn + feeOn(chosen.usdtIn, fee.bps)).toString() : "0", recipient: fee.recipient, onInKindRedeem: false },
+      // the protocol fee is charged on the notional spent, on top of it; the router pulls usdgIn + fee and refunds the unspent rest
+      fee: { bps: fee.bps, usdg: chosen ? feeOn(chosen.usdgIn, fee.bps).toString() : "0", totalUsdgIn: chosen ? (chosen.usdgIn + feeOn(chosen.usdgIn, fee.bps)).toString() : "0", recipient: fee.recipient, onInKindRedeem: false },
       status,
       policy,
       dataSource: this.dataSource,
       executable: !this.chain.isQuoteOnly,
-      unroutable,
       gasUsd: formatWad(gasUsd, 6),
       chainId: this.chain.cfg.CHAIN_ID,
       router: this.chain.d.router,
@@ -178,8 +178,8 @@ export class Resolver {
 
     let tx: ResolveResult["tx"] = null;
     let simulation: ResolveResult["simulation"] = null;
-    if (chosen && status === "ok" && recipient && !this.chain.isQuoteOnly && !unroutable) {
-      const totalIn = chosen.usdtIn + feeOn(chosen.usdtIn, fee.bps);
+    if (chosen && status === "ok" && recipient && !this.chain.isQuoteOnly) {
+      const totalIn = chosen.usdgIn + feeOn(chosen.usdgIn, fee.bps);
       const data = encodeFunctionData({
         abi: ShareRouterAbi,
         functionName: "buyShares",
@@ -187,7 +187,7 @@ export class Resolver {
       });
       tx = { to: this.chain.d.router, data, value: "0", from: wallet, chainId: this.chain.cfg.CHAIN_ID };
       if (wallet) {
-        const s = await this.sim.simulate({ from: wallet, to: this.chain.d.router, data, usdtSpender: this.chain.d.router, usdtAmount: totalIn });
+        const s = await this.sim.simulate({ from: wallet, to: this.chain.d.router, data, usdgSpender: this.chain.d.router, usdgAmount: totalIn });
         simulation = { ok: s.ok, gasUsed: s.gasUsed, error: s.error };
         (record as Record<string, unknown>).approvalNeeded = s.approvalNeeded;
         if (s.gasUsed) tx.gas = ((BigInt(s.gasUsed) * 12n) / 10n).toString();
@@ -226,29 +226,29 @@ export class Resolver {
         amount = tokens < amount || !wallet ? tokens : amount;
       }
       if (amount <= 0n) continue;
-      const s = await scoreSell(this.venues, { usdt: this.chain.d.usdt, executor: this.chain.d.router, policy, rep, tokenAmount: amount, referencePrice: ref?.price ?? null });
+      const s = await scoreSell(this.venues, { usdg: this.chain.d.usdg, executor: this.chain.d.router, policy, rep, tokenAmount: amount, referencePrice: ref?.price ?? null });
       results.push({ rep, amount, s });
     }
     const viable = results.filter((r) => r.s).sort((a, b) => (a.s!.usdPerShare > b.s!.usdPerShare ? -1 : 1));
     const best = viable[0];
-    // the fee comes out of the USDT received; the onchain minimum is net of it
+    // the fee comes out of the USDG received; the onchain minimum is net of it
     const fee = await this.chain.fee();
     const net = (gross: bigint) => gross - feeOn(gross, fee.bps);
     const record = {
       underlying: u.ticker,
       side: "sell" as const,
-      fee: { bps: fee.bps, usdt: best ? feeOn(best.s!.usdtOut, fee.bps).toString() : "0", netUsdtOut: best ? net(best.s!.usdtOut).toString() : "0", recipient: fee.recipient, onInKindRedeem: false },
+      fee: { bps: fee.bps, usdg: best ? feeOn(best.s!.usdgOut, fee.bps).toString() : "0", netUsdgOut: best ? net(best.s!.usdgOut).toString() : "0", recipient: fee.recipient, onInKindRedeem: false },
       timestamp: now,
       referencePrice: ref ? formatWad(ref.price, 6) : "0",
       referenceSource: ref?.source ?? "unavailable",
       candidates: results.map((r) => ({
         platform: r.rep.platform, token: r.rep.token, symbol: r.rep.symbol, ratio: r.rep.ratio.toString(), tokenAmount: r.amount.toString(),
-        venue: r.s?.quote.venue ?? "none", usdtOut: r.s?.usdtOut.toString() ?? "0", shares: r.s?.shares.toString() ?? "0",
+        venue: r.s?.quote.venue ?? "none", usdgOut: r.s?.usdgOut.toString() ?? "0", shares: r.s?.shares.toString() ?? "0",
         usdPerShare: r.s ? formatWad(r.s.usdPerShare, 6) : "0", premiumBps: r.s?.premiumBps ?? 0, eligible: Boolean(r.s),
-        reasons: r.s ? [] : ["no contract-executable AMM liquidity"],
+        reasons: r.s ? [] : ["no pool can fill this size"],
       })),
       chosen: best
-        ? { representation: best.rep.token, tokenAmount: best.amount.toString(), usdtOut: net(best.s!.usdtOut).toString(), minUsdtOut: net(best.s!.minUsdtOut).toString(), legs: serializeLegs(best.s!.legs), why: `${best.rep.symbol} via ${best.s!.quote.venue}: ${formatWad(best.s!.usdPerShare, 4)} USD/share (${best.s!.premiumBps} bps vs reference)` }
+        ? { representation: best.rep.token, tokenAmount: best.amount.toString(), usdgOut: net(best.s!.usdgOut).toString(), minUsdgOut: net(best.s!.minUsdgOut).toString(), legs: serializeLegs(best.s!.legs), why: `${best.rep.symbol} via ${best.s!.quote.venue}: ${formatWad(best.s!.usdPerShare, 4)} USD/share (${best.s!.premiumBps} bps vs reference)` }
         : null,
       status: best ? ("ok" as const) : ("no_route" as const),
       policy,
@@ -264,7 +264,7 @@ export class Resolver {
     if (best && recipient) {
       const data = encodeFunctionData({
         abi: ShareRouterAbi, functionName: "sellShares",
-        args: [u.id, best.rep.token, best.amount, net(best.s!.minUsdtOut), best.s!.legs, recipient, quoteHash],
+        args: [u.id, best.rep.token, best.amount, net(best.s!.minUsdgOut), best.s!.legs, recipient, quoteHash],
       });
       tx = { to: this.chain.d.router, data, value: "0", from: wallet, chainId: this.chain.cfg.CHAIN_ID };
       if (wallet) {
@@ -284,22 +284,22 @@ export class Resolver {
 
   async stocks(query?: string) {
     const all = await this.chain.allUnderlyings();
-    const brands = await this.binance.brands();
+    const brands = this.chain.catalogue.brands();
     const q = query?.trim().toUpperCase();
     const list = q ? all.filter((u) => u.ticker.includes(q) || u.representations.some((r) => r.symbol.toUpperCase().includes(q))) : all;
     const out = [];
     for (const u of list) {
       const [ref, market] = await Promise.all([this.referencePrice(u), this.marketStatus(u)]);
-      const reps = [];
-      for (const r of u.representations) {
-        const b = await this.binance.token(r.token);
-        reps.push({
+      const reps = await Promise.all(u.representations.map(async (r) => {
+        const depth = await this.venues.depth(r.token).catch(() => ({ usdg: 0n, tiers: [] as number[], bestFee: null }));
+        return {
           token: r.token, symbol: r.symbol, platform: r.platform, ratio: r.ratio.toString(), ratioSource: r.ratioSource, ratioUpdatedAt: r.ratioUpdatedAt,
           pendingMultiplier: r.pendingMultiplier ? { multiplier: r.pendingMultiplier.multiplier.toString(), effectiveAt: r.pendingMultiplier.effectiveAt } : null,
           attestedAt: r.attestedAt, buyEligible: r.buyEligible, sellEligible: r.sellEligible, active: r.active,
-          binance: b ? { tokenPrice: b.tokenPrice, referencePrice: b.referencePrice, tokenToShareRatio: b.tokenToShareRatio, volume24h: b.volume24h } : null,
-        });
-      }
+          // USDG in this token's direct pools, and which fee tiers hold it
+          poolUsdg: depth.usdg.toString(), poolFees: depth.tiers,
+        };
+      }));
       const brand = brands.get(u.ticker.toUpperCase()) ?? null;
       out.push({
         ticker: u.ticker, id: u.id, active: u.active, name: brand?.name ?? null, logoUrl: brand?.logoUrl ?? null,
@@ -307,7 +307,7 @@ export class Resolver {
         market, representations: reps,
       });
     }
-    return { dataSource: this.dataSource, binance: { mode: this.binance.mode, available: this.binance.available }, stocks: out };
+    return { dataSource: this.dataSource, stocks: out };
   }
 }
 

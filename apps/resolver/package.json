@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
-    "@parallax-hood/binance-client": "workspace:*",
     "@parallax-hood/sdk": "workspace:*",
+    "@parallax-hood/uniswap-client": "workspace:*",
     "hono": "^4.6.0",
     "viem": "^2.21.0",
     "zod": "^3.23.8"

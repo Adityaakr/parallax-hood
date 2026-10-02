@@ -1,54 +1,40 @@
 /**
- * Computed US equity regular-session hours (NYSE/Nasdaq): Mon–Fri 09:30–16:00 America/New_York, minus holidays.
- * Used only as a labeled fallback when the Binance `statusInfo` is unavailable. Source: "computed".
+ * When the reference price moves. Chainlink's Robinhood stock feeds run on the "us_equities_24/5" schedule
+ * (the `marketHours` field of each feed in Chainlink's feed directory): continuously from Sunday 20:00 to
+ * Friday 20:00 New York time, paused over the weekend. Inside that window the reference is live and a quote can
+ * be checked against it; outside it the pools keep trading against a price that last moved on Friday, which is
+ * the case the closed-market premium cap exists for. Computed, and labelled "computed": no on-chain source says
+ * whether the session is open, and exchange holidays are not modelled.
  */
-const HOLIDAYS_2026 = new Set([
-  "2026-01-01", "2026-01-19", "2026-02-16", "2026-04-03", "2026-05-25", "2026-06-19", "2026-07-03", "2026-09-07", "2026-11-26", "2026-12-25",
-]);
-const HOLIDAYS_2027 = new Set(["2027-01-01", "2027-01-18", "2027-02-15", "2027-03-26", "2027-05-31", "2027-06-18", "2027-07-05", "2027-09-06", "2027-11-25", "2027-12-24"]);
-const HOLIDAYS = new Set([...HOLIDAYS_2026, ...HOLIDAYS_2027]);
+const WEEK_OPEN = { weekday: "Sun", minutes: 20 * 60 };
+const WEEK_CLOSE = { weekday: "Fri", minutes: 20 * 60 };
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function nyParts(d: Date) {
   const f = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", weekday: "short",
   });
   const p = Object.fromEntries(f.formatToParts(d).map((x) => [x.type, x.value]));
-  return { ymd: `${p.year}-${p.month}-${p.day}`, minutes: Number(p.hour) * 60 + Number(p.minute), weekday: p.weekday as string };
+  return { minutes: Number(p.hour) * 60 + Number(p.minute), weekday: p.weekday as string };
 }
 
-function isTradingDay(ymd: string, weekday: string) {
-  return weekday !== "Sat" && weekday !== "Sun" && !HOLIDAYS.has(ymd);
+/** Minutes since Sunday 00:00 New York time. */
+function weekMinutes(d: Date) {
+  const { weekday, minutes } = nyParts(d);
+  return DAYS.indexOf(weekday) * 1440 + minutes;
 }
 
-export type MarketStatus = { open: boolean; nextOpenTime: number | null; nextCloseTime: number | null; source: "computed" | "binance" | "registry"; reason?: string };
+export type MarketStatus = { open: boolean; nextOpenTime: number | null; nextCloseTime: number | null; source: "computed" | "registry"; reason?: string };
 
 export function computedMarketStatus(now = new Date()): MarketStatus {
-  const { ymd, minutes, weekday } = nyParts(now);
-  const OPEN = 9 * 60 + 30, CLOSE = 16 * 60;
-  const trading = isTradingDay(ymd, weekday);
-  if (trading && minutes >= OPEN && minutes < CLOSE) {
-    return { open: true, nextOpenTime: null, nextCloseTime: nyTime(now, ymd, CLOSE), source: "computed" };
-  }
-  // find next open: today (if before open) or the next trading day
-  let cursor = new Date(now);
-  for (let i = 0; i < 10; i++) {
-    const p = nyParts(cursor);
-    if (isTradingDay(p.ymd, p.weekday) && (i > 0 || p.minutes < OPEN)) {
-      return { open: false, nextOpenTime: nyTime(cursor, p.ymd, OPEN), nextCloseTime: null, source: "computed", reason: trading ? "OUTSIDE_SESSION" : "MARKET_CLOSED" };
-    }
-    cursor = new Date(cursor.getTime() + 24 * 3600 * 1000);
-  }
-  return { open: false, nextOpenTime: null, nextCloseTime: null, source: "computed", reason: "MARKET_CLOSED" };
-}
-
-/** Unix ms for `ymd` at `minutes` past midnight New York time (DST-aware via iterative offset). */
-function nyTime(ref: Date, ymd: string, minutes: number): number {
-  const [y, m, d] = ymd.split("-").map(Number) as [number, number, number];
-  let guess = Date.UTC(y, m - 1, d, Math.floor(minutes / 60), minutes % 60);
-  for (let i = 0; i < 3; i++) {
-    const p = nyParts(new Date(guess));
-    const got = p.minutes + (p.ymd === ymd ? 0 : p.ymd > ymd ? 24 * 60 : -24 * 60);
-    guess -= (got - minutes) * 60_000;
-  }
-  return guess;
+  const at = weekMinutes(now);
+  const opens = DAYS.indexOf(WEEK_OPEN.weekday) * 1440 + WEEK_OPEN.minutes;
+  const closes = DAYS.indexOf(WEEK_CLOSE.weekday) * 1440 + WEEK_CLOSE.minutes;
+  const open = at >= opens && at < closes;
+  // Whole minutes until the boundary. A daylight-saving change inside the gap moves it by an hour, which is
+  // acceptable for a label that says "computed" and is never used to gate a transaction on its own.
+  const until = (target: number) => now.getTime() + ((target - at + 10_080) % 10_080) * 60_000;
+  return open
+    ? { open: true, nextOpenTime: null, nextCloseTime: until(closes), source: "computed" }
+    : { open: false, nextOpenTime: until(opens), nextCloseTime: null, source: "computed", reason: "WEEKEND" };
 }

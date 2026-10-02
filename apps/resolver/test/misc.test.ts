@@ -3,19 +3,27 @@ import { computedMarketStatus } from "../src/providers/marketHours.js";
 import { canonicalJson, quoteHashOf } from "../src/quotes.js";
 import { Db } from "../src/db.js";
 
-describe("computed market hours", () => {
-  it("open on a weekday at 10:00 New York, closed at 17:00, closed on Saturday and on a holiday", () => {
+describe("computed market hours (24/5)", () => {
+  it("is open from Sunday 20:00 to Friday 20:00 New York time", () => {
     expect(computedMarketStatus(new Date("2026-09-17T14:00:00Z")).open).toBe(true); // Thu 10:00 EDT
-    const c = computedMarketStatus(new Date("2026-09-17T21:00:00Z")); // Thu 17:00 EDT
-    expect(c.open).toBe(false);
-    expect(new Date(c.nextOpenTime!).toISOString()).toBe("2026-09-18T13:30:00.000Z");
+    expect(computedMarketStatus(new Date("2026-09-17T07:00:00Z")).open).toBe(true); // Thu 03:00 EDT, overnight session
+    expect(computedMarketStatus(new Date("2026-09-18T23:59:00Z")).open).toBe(true); // Fri 19:59 EDT
+    expect(computedMarketStatus(new Date("2026-09-21T00:00:00Z")).open).toBe(true); // Sun 20:00 EDT
+  });
+
+  it("is closed over the weekend and says when it reopens", () => {
+    const fri = computedMarketStatus(new Date("2026-09-19T00:00:00Z")); // Fri 20:00 EDT
+    expect(fri.open).toBe(false);
+    expect(new Date(fri.nextOpenTime!).toISOString()).toBe("2026-09-21T00:00:00.000Z");
     const sat = computedMarketStatus(new Date("2026-09-19T15:00:00Z"));
     expect(sat.open).toBe(false);
-    expect(new Date(sat.nextOpenTime!).toISOString()).toBe("2026-09-21T13:30:00.000Z");
-    const hol = computedMarketStatus(new Date("2026-11-26T15:00:00Z")); // Thanksgiving
-    expect(hol.open).toBe(false);
-    expect(new Date(hol.nextOpenTime!).toISOString()).toBe("2026-11-27T14:30:00.000Z"); // EST after DST ends
-    expect(computedMarketStatus(new Date("2026-09-17T14:00:00Z")).source).toBe("computed");
+    expect(new Date(sat.nextOpenTime!).toISOString()).toBe("2026-09-21T00:00:00.000Z");
+    expect(sat.source).toBe("computed");
+  });
+
+  it("names the next close while open", () => {
+    const thu = computedMarketStatus(new Date("2026-09-17T14:00:00Z"));
+    expect(new Date(thu.nextCloseTime!).toISOString()).toBe("2026-09-19T00:00:00.000Z");
   });
 });
 

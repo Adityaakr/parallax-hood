@@ -1,18 +1,21 @@
 /**
  * Price history from Chainlink round data. Every past round of a feed stays onchain, so the price at any
- * timestamp is a binary search over roundIds — real, verifiable history, no estimates. Only underlyings
- * with a BSC feed have it (the Mag 7 today); everything else reports `null` and the UI says so.
+ * timestamp is a binary search over roundIds: real, verifiable history, no estimates. Only underlyings
+ * with a feed in the universe file have it; everything else reports `null` and the UI says so.
  *
- * Round ids are `phaseId << 64 | aggregatorRoundId`; the search stays inside the latest phase, which for
- * the Mag 7 feeds covers more than two years. Past rounds never change, so every round read is kept in
+ * Round ids are `phaseId << 64 | aggregatorRoundId`; the search stays inside the latest phase, so history
+ * reaches back to when that phase began and no further. Past rounds never change, so every round read is kept in
  * SQLite and every later search is bounded by the rounds already known: the first lookup on a feed costs
  * ~20 reads, the next ones a handful.
  *
- * History always comes from BSC mainnet, even when the app runs on a fork or testnet: it is the same chain
- * history, and reading it through anvil would forward every round to the upstream archive.
+ * History always comes from Robinhood Chain mainnet, even when the app runs on a fork or the testnet: it is
+ * the same chain history, and reading it through anvil would forward every round upstream.
+ *
+ * A Robinhood stock feed prices the token, multiplier included, so a series from it is the token's price. The
+ * multiplier moves by a dividend at a time, which is small against a day's price move but is not nothing: the
+ * return figures are the token's total return, which is what a holder of the token actually earns.
  */
 import { type Address, type PublicClient, parseAbi } from "viem";
-import { BSC_ADDRESSES } from "@parallax-hood/sdk";
 import type { Db } from "./db.js";
 import { logger } from "./log.js";
 
@@ -37,12 +40,12 @@ export class PriceHistory {
   private decimals = new Map<string, number>();
   private latest = new Map<string, { phase: bigint; r: Round; fetchedAt: number }>();
 
-  constructor(private client: PublicClient, private enabled: boolean, private db?: Db) {
+  constructor(private client: PublicClient, private enabled: boolean, private feeds: (ticker: string) => Address | null, private db?: Db) {
     db?.db.exec(`CREATE TABLE IF NOT EXISTS chainlink_rounds (feed TEXT NOT NULL, agg TEXT NOT NULL, price TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (feed, agg));`);
   }
 
   feedFor(ticker: string): Address | null {
-    return this.enabled ? ((BSC_ADDRESSES.chainlink as Record<string, Address>)[ticker] ?? null) : null;
+    return this.enabled ? this.feeds(ticker) : null;
   }
 
   hasHistory(ticker: string) {
@@ -75,6 +78,9 @@ export class PriceHistory {
     try {
       const r = await this.client.readContract({ address: feed, abi: ABI, functionName: "getRoundData", args: [(phase << 64n) | agg] });
       if (r[3] === 0n) return null;
+      // The first rounds of each Robinhood stock feed (21 to 23 June 2026) were published 1e10 too large. No
+      // 8-decimal stock price reaches 1e15, so anything above it is one of those rounds and is not a price.
+      if (r[1] > 10n ** 15n) return null;
       const out = { agg, price: r[1], at: Number(r[3]) };
       this.remember(feed, out);
       return out;

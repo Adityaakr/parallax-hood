@@ -1,13 +1,10 @@
-import { readFileSync, existsSync } from "node:fs";
-import { resolve as resolvePath } from "node:path";
-import { REPO_ROOT } from "./config.js";
-import { createPublicClient, http, custom, type Address, type Hex, type PublicClient, type Transport, getAddress } from "viem";
-import { bsc } from "viem/chains";
+import { createPublicClient, http, custom, type Address, type Hex, type PublicClient, type Transport } from "viem";
 import {
-  StockRegistryAbi, BasketVaultAbi, BasketFactoryAbi, Erc20Abi, Erc8056Abi, ChainlinkAggregatorAbi, PancakeQuoterV2Abi,
-  MockSwapTargetAbi, idToTicker, tickerToId, BSC_ADDRESSES, MAINNET_REPRESENTATIONS, mockTwins, type Deployment, type MockTwin,
+  StockRegistryAbi, BasketVaultAbi, BasketFactoryAbi, Erc20Abi, Erc8056Abi, ChainlinkAggregatorAbi,
+  MockSwapTargetAbi, CHAINS, idToTicker, tickerToId, mockTwins, type Deployment, type MockTwin,
 } from "@parallax-hood/sdk";
 import type { Config } from "./config.js";
+import { Catalogue } from "./providers/catalogue.js";
 
 export type RatioSource = "KEEPER" | "ERC8056";
 
@@ -85,24 +82,26 @@ export class Chain {
   }
 
   /**
-   * Hybrid demo: mock token → its mainnet twin. Built from the deployment's `mocks` (symbol → mock address) and
-   * bsc.json (symbol → real token), so every market read for a mock resolves against the real token while
+   * Hybrid: mock token → its mainnet twin. Built from the deployment's `mocks` (symbol → mock address) and the
+   * universe file (symbol → real token), so every market read for a mock resolves against the real token while
    * execution stays on this network.
    */
   private readonly twins: Map<string, MockTwin>;
-  /** Mainnet reads (Chainlink) when this network cannot answer them itself. */
+  /** Robinhood Chain mainnet reads (Chainlink, pool depth) when this network cannot answer them itself. */
   readonly mainnet: PublicClient;
+  /** The verified token, feed and index list. */
+  readonly catalogue: Catalogue;
 
   constructor(readonly cfg: Config) {
     // No JSON-RPC batching (anvil mishandles batched eth_call with reverts); multicall3 batches plain reads.
     const transport = cfg.network === "fork" ? throttledHttp(cfg.rpcUrl, Number(process.env.FORK_MAX_INFLIGHT ?? 3)) : http(cfg.rpcUrl);
     this.client = createPublicClient({ chain: cfg.chain, transport, batch: { multicall: cfg.chain.contracts?.multicall3 ? { wait: 8 } : false } });
     this.d = cfg.deployment;
-    this.mainnet = cfg.network === "bsc" ? this.client : createPublicClient({ chain: bsc, transport: http(cfg.BSC_RPC_URL) });
-    const file = cfg.UNIVERSE_FILE ?? resolvePath(REPO_ROOT, "contracts/script/config/bsc.json");
-    this.twins = cfg.hybrid && this.d.mocks
-      ? mockTwins(this.d, (JSON.parse(readFileSync(file, "utf8")) as { representations: { ticker: string; platform: string; symbol: string; token: string }[] }).representations)
-      : new Map();
+    this.mainnet = cfg.network === "robinhood"
+      ? this.client
+      : createPublicClient({ chain: CHAINS.robinhood, transport: http(cfg.ROBINHOOD_RPC_URL), batch: { multicall: { wait: 16 } } });
+    this.catalogue = new Catalogue(cfg.UNIVERSE_FILE);
+    this.twins = cfg.hybrid && this.d.mocks ? mockTwins(this.d, this.catalogue.universe.representations) : new Map();
   }
 
   get isMocks() {
@@ -149,7 +148,7 @@ export class Chain {
 
   async limits() {
     // quote-only: no registry to read, so use the same defaults the contracts ship with
-    if (this.cfg.quoteOnly) return { maxAttestationAge: 36 * 3600, maxRatioAge: 12 * 3600, maxRatioStepBps: 500, buysPaused: false };
+    if (this.cfg.quoteOnly) return { maxAttestationAge: Number.MAX_SAFE_INTEGER, maxRatioAge: 12 * 3600, maxRatioStepBps: 500, buysPaused: false };
     return this.memo("limits", 30_000, async () => {
     const [maxAttestationAge, maxRatioAge, maxRatioStepBps, buysPaused] = await Promise.all([
       this.client.readContract({ address: this.d.registry, abi: StockRegistryAbi, functionName: "maxAttestationAge" }),
@@ -157,11 +156,13 @@ export class Chain {
       this.client.readContract({ address: this.d.registry, abi: StockRegistryAbi, functionName: "maxRatioStepBps" }),
       this.client.readContract({ address: this.d.registry, abi: StockRegistryAbi, functionName: "buysPaused" }),
     ]);
-    return { maxAttestationAge: Number(maxAttestationAge), maxRatioAge: Number(maxRatioAge), maxRatioStepBps: Number(maxRatioStepBps), buysPaused };
+    // a registry with the attestation gate switched off stores the largest uint64, which a JS number cannot hold
+    const cap = (v: bigint) => (v > BigInt(Number.MAX_SAFE_INTEGER) ? Number.MAX_SAFE_INTEGER : Number(v));
+    return { maxAttestationAge: cap(maxAttestationAge), maxRatioAge: cap(maxRatioAge), maxRatioStepBps: Number(maxRatioStepBps), buysPaused };
     });
   }
 
-  /** Protocol fee (bps of USDT notional) and recipient, from the registry; quote-only reports the configured default. */
+  /** Protocol fee (bps of USDG notional) and recipient, from the registry; quote-only reports the configured default. */
   async fee(): Promise<{ bps: number; recipient: Address | null }> {
     if (this.cfg.quoteOnly) return { bps: this.cfg.PROTOCOL_FEE_BPS, recipient: null };
     return this.memo("fee", 30_000, async () => {
@@ -207,14 +208,7 @@ export class Chain {
     const attestedAt = await this.client.readContract({ ...reg, functionName: "attestedAt", args: [r.platformId] });
     const ratioSource: RatioSource = r.ratioSource === 1 ? "ERC8056" : "KEEPER";
     let pending: RepresentationInfo["pendingMultiplier"] = null;
-    if (ratioSource === "ERC8056") {
-      try {
-        const [m, eff] = await this.client.readContract({ address: token, abi: Erc8056Abi, functionName: "pendingMultiplier" });
-        if (eff !== 0n) pending = { multiplier: m, effectiveAt: Number(eff) };
-      } catch {
-        /* token without pendingMultiplier */
-      }
-    }
+    if (ratioSource === "ERC8056") pending = await this.pendingMultiplier(token, ratio[0]);
     return {
       token,
       underlyingId: r.underlyingId,
@@ -235,24 +229,36 @@ export class Chain {
   }
 
   /**
-   * Quote-only universe: the registry lives in contracts/script/config/<network>.json instead of onchain.
-   * Ratios still come from the chain for ERC-8056 tokens; keeper-sourced ratios come from the generated config
-   * (regenerate it with scripts/gen-universe.ts to refresh them from the Binance catalogue).
+   * A multiplier change the issuer has scheduled but that is not in force yet: `newUIMultiplier()` taking effect
+   * at `effectiveAt()`. Before anything is scheduled the pair simply mirrors the current multiplier and the time
+   * it last changed, so a pending change is one that is both different and still in the future.
    */
-  /** The curated index definitions from the same config file, for networks where the vaults are not deployed. */
-  fileIndices(): { name: string; symbol: string; thesis: string; unitValueUsd: number; constituents: { ticker: string; weightBps: number; sharesPerUnit: string; why?: string }[] }[] {
-    const file = this.cfg.UNIVERSE_FILE ?? resolvePath(REPO_ROOT, "contracts/script/config/bsc.json");
-    if (!existsSync(file)) return [];
-    return (JSON.parse(readFileSync(file, "utf8")) as { indices?: ReturnType<Chain["fileIndices"]> }).indices ?? [];
+  private async pendingMultiplier(token: Address, current: bigint): Promise<RepresentationInfo["pendingMultiplier"]> {
+    try {
+      const [next, eff, now] = await Promise.all([
+        this.client.readContract({ address: token, abi: Erc8056Abi, functionName: "newUIMultiplier" }),
+        this.client.readContract({ address: token, abi: Erc8056Abi, functionName: "effectiveAt" }),
+        this.now(),
+      ]);
+      return next !== current && Number(eff) > now ? { multiplier: next, effectiveAt: Number(eff) } : null;
+    } catch {
+      return null; // not an ERC-8056 token with the scheduled-update views
+    }
   }
+
+  /** The curated index definitions from the universe file, for networks where the vaults are not deployed. */
+  fileIndices() {
+    return this.catalogue.universe.indices;
+  }
+
+  /**
+   * Quote-only universe: with no registry deployed, the universe file stands in for it. Ratios still come from
+   * the chain, read from each token's own `uiMultiplier()`.
+   */
   private universeCache: UnderlyingInfo[] | null = null;
   private async fileUniverse(): Promise<UnderlyingInfo[]> {
     if (this.universeCache) return this.universeCache;
-    const file = this.cfg.UNIVERSE_FILE ?? resolvePath(REPO_ROOT, "contracts/script/config/bsc.json");
-    if (!existsSync(file)) return [];
-    const cfg = JSON.parse(readFileSync(file, "utf8")) as {
-      representations: { ticker: string; platform: string; symbol: string; token: string; source: string; initialRatio: string }[];
-    };
+    const cfg = this.catalogue.universe;
     const byTicker = new Map<string, typeof cfg.representations>();
     for (const r of cfg.representations) {
       const list = byTicker.get(r.ticker) ?? [];
@@ -264,14 +270,14 @@ export class Chain {
     for (const [ticker, reps] of byTicker) {
       const representations: RepresentationInfo[] = [];
       for (const r of reps) {
-        const token = getAddress(r.token);
+        const token = r.token;
         let ratio = BigInt(r.initialRatio);
         if (r.source === "ERC8056") {
           // live shares-per-token straight from the token itself
           try {
             ratio = await this.client.readContract({ address: token, abi: Erc8056Abi, functionName: "uiMultiplier" });
           } catch {
-            /* keep the catalogue value */
+            /* keep the value recorded in the universe file */
           }
         }
         representations.push({
@@ -286,7 +292,7 @@ export class Chain {
           active: true,
           ratio,
           ratioUpdatedAt: now,
-          pendingMultiplier: null,
+          pendingMultiplier: r.source === "ERC8056" ? await this.pendingMultiplier(token, ratio) : null,
           attestedAt: now,
           buyEligible: true,
           sellEligible: true,
@@ -308,14 +314,11 @@ export class Chain {
     const k = token.toLowerCase();
     const hit = this.symbolCache.get(k);
     if (hit) return hit;
-    const known = MAINNET_REPRESENTATIONS.find((m) => m.token.toLowerCase() === k);
-    let s = known?.symbol;
-    if (!s) {
-      try {
-        s = await this.client.readContract({ address: token, abi: Erc20Abi, functionName: "symbol" });
-      } catch {
-        s = token.slice(0, 8);
-      }
+    let s: string;
+    try {
+      s = await this.client.readContract({ address: token, abi: Erc20Abi, functionName: "symbol" });
+    } catch {
+      s = token.slice(0, 8);
     }
     this.symbolCache.set(k, s);
     return s;
@@ -345,14 +348,14 @@ export class Chain {
 
   async basketMeta(basket: Address) {
     const v = { address: basket, abi: BasketVaultAbi } as const;
-    const [name, symbol, totalSupply, constituents, usdtBal] = await Promise.all([
+    const [name, symbol, totalSupply, constituents, usdgBal] = await Promise.all([
       this.client.readContract({ ...v, functionName: "name" }),
       this.client.readContract({ ...v, functionName: "symbol" }),
       this.client.readContract({ ...v, functionName: "totalSupply" }),
       this.client.readContract({ ...v, functionName: "constituents" }),
-      this.balanceOf(this.d.usdt, basket),
+      this.balanceOf(this.d.usdg, basket),
     ]);
-    return { name, symbol, totalSupply, constituents: constituents.map((c) => ({ ...c, ticker: idToTicker(c.underlyingId) })), usdtBalance: usdtBal };
+    return { name, symbol, totalSupply, constituents: constituents.map((c) => ({ ...c, ticker: idToTicker(c.underlyingId) })), usdgBalance: usdgBal };
   }
 
   async basketComposition(basket: Address) {
@@ -361,54 +364,57 @@ export class Chain {
 
   // ---- reference prices ----
 
+  /**
+   * The registry's own reference price for an underlying: USD per underlying share, 1e18-scaled. This is the
+   * number the mandate's floor is computed from, so quoting against it means the resolver and the contract can
+   * never disagree about what "the reference" is. Zero when the registry has neither a feed nor a posted price.
+   */
+  async registryPrice(id: Hex): Promise<{ price: bigint; updatedAt: number } | null> {
+    if (this.cfg.quoteOnly) return null;
+    return this.memo(`ref:${id}`, 5_000, async () => {
+      try {
+        const [price, updatedAt] = await this.client.readContract({ address: this.d.registry, abi: StockRegistryAbi, functionName: "referencePrice", args: [id] });
+        return price > 0n ? { price, updatedAt: Number(updatedAt) } : null;
+      } catch {
+        return null;
+      }
+    });
+  }
+
+  /**
+   * The Chainlink feed for a ticker, read directly. On Robinhood Chain this prices the *token*, with the
+   * ERC-8056 multiplier already in it; the caller divides by the token's ratio to get a share price.
+   */
   async chainlinkPrice(ticker: string): Promise<{ price: bigint; decimals: number; updatedAt: number; feed: Address } | null> {
-    const feed = BSC_ADDRESSES.chainlink[ticker];
+    const feed = this.catalogue.feed(ticker);
     if (!feed || (this.isMocks && !this.isHybrid)) return null;
     // the fork holds the feed itself; a hybrid mock network reads it from mainnet
     const client = this.isHybrid ? this.mainnet : this.client;
     return this.memo(`cl:${ticker}`, 5_000, async () => {
-    try {
-      const [round, dec] = await Promise.all([
-        client.readContract({ address: feed, abi: ChainlinkAggregatorAbi, functionName: "latestRoundData" }),
-        client.readContract({ address: feed, abi: ChainlinkAggregatorAbi, functionName: "decimals" }),
-      ]);
-      return { price: round[1], decimals: dec, updatedAt: Number(round[3]), feed };
-    } catch {
-      return null;
-    }
+      try {
+        const [round, dec] = await Promise.all([
+          client.readContract({ address: feed, abi: ChainlinkAggregatorAbi, functionName: "latestRoundData" }),
+          client.readContract({ address: feed, abi: ChainlinkAggregatorAbi, functionName: "decimals" }),
+        ]);
+        return round[1] > 0n ? { price: round[1], decimals: dec, updatedAt: Number(round[3]), feed } : null;
+      } catch {
+        return null;
+      }
+    });
+  }
+
+  /** The live multiplier of a mainnet token, for a hybrid network pricing a mock against its twin's feed. */
+  async mainnetMultiplier(token: Address): Promise<bigint | null> {
+    return this.memo(`mult:${token}`, 60_000, async () => {
+      try {
+        return await this.mainnet.readContract({ address: token, abi: Erc8056Abi, functionName: "uiMultiplier" });
+      } catch {
+        return null;
+      }
     });
   }
 
   // ---- venues ----
-
-  /** PancakeSwap v3 exact-input quote for one fee tier. Returns null when the pool is missing/illiquid. */
-  async pancakeQuoteExactInput(tokenIn: Address, tokenOut: Address, amountIn: bigint, fee: number): Promise<bigint | null> {
-    try {
-      const { result } = await this.client.simulateContract({
-        address: BSC_ADDRESSES.pancakeQuoterV2,
-        abi: PancakeQuoterV2Abi,
-        functionName: "quoteExactInputSingle",
-        args: [{ tokenIn, tokenOut, amountIn, fee, sqrtPriceLimitX96: 0n }],
-      });
-      return result[0] > 0n ? result[0] : null;
-    } catch {
-      return null;
-    }
-  }
-
-  async pancakeQuoteExactOutput(tokenIn: Address, tokenOut: Address, amountOut: bigint, fee: number): Promise<bigint | null> {
-    try {
-      const { result } = await this.client.simulateContract({
-        address: BSC_ADDRESSES.pancakeQuoterV2,
-        abi: PancakeQuoterV2Abi,
-        functionName: "quoteExactOutputSingle",
-        args: [{ tokenIn, tokenOut, amount: amountOut, fee, sqrtPriceLimitX96: 0n }],
-      });
-      return result[0] > 0n ? result[0] : null;
-    } catch {
-      return null;
-    }
-  }
 
   /** Mock venue (testnet/local): deterministic price. */
   async mockQuote(tokenIn: Address, tokenOut: Address, amountIn: bigint): Promise<bigint | null> {

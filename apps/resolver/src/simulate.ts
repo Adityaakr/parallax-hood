@@ -9,17 +9,12 @@ const ALL_ABIS = [...ShareRouterAbi, ...BasketVaultAbi, ...AgentMandateAbi] as c
 export type SimResult = { ok: boolean; gasUsed?: string; error?: string; approvalNeeded: boolean; usedOverrides: boolean };
 
 /**
- * Simulates an unsigned tx with eth_call from the user's address. If the user has not yet approved USDT (or lacks
+ * Simulates an unsigned tx with eth_call from the user's address. If the user has not yet approved USDG (or lacks
  * balance), we retry with an eth_call state override that sets the ERC-20 balance/allowance storage slots, so the
  * route itself is still verified end to end. Slots are discovered once per token by probing (like forge's `deal`).
  */
-/**
- * Slots we already know, so the first simulation on a cold fork does not spend ~30 upstream eth_calls probing
- * for them. Verified against BSC mainnet state on 20 Sep 2026.
- */
-const KNOWN_SLOTS: Record<string, { balance: number; allowance: number }> = {
-  "0x55d398326f99059ff775485246999027b3197955": { balance: 1, allowance: 2 }, // USDT (BEP-20)
-};
+/** Slots already known, so a simulation need not probe for them. None are recorded for Robinhood Chain yet. */
+const KNOWN_SLOTS: Record<string, { balance: number; allowance: number }> = {};
 
 export class Simulator {
   private slots = new Map<string, { balance: number; allowance: number } | null>();
@@ -66,21 +61,21 @@ export class Simulator {
     return found;
   }
 
-  async simulate(p: { from: Address; to: Address; data: Hex; value?: bigint; usdtSpender?: Address; usdtAmount?: bigint }): Promise<SimResult> {
-    const usdt = this.chain.d.usdt;
+  async simulate(p: { from: Address; to: Address; data: Hex; value?: bigint; usdgSpender?: Address; usdgAmount?: bigint }): Promise<SimResult> {
+    const usdg = this.chain.d.usdg;
     let approvalNeeded = false;
-    if (p.usdtSpender && p.usdtAmount) {
-      const [al, bal] = await Promise.all([this.chain.allowance(usdt, p.from, p.usdtSpender), this.chain.balanceOf(usdt, p.from)]);
-      approvalNeeded = al < p.usdtAmount;
-      const needsBalance = bal < p.usdtAmount;
+    if (p.usdgSpender && p.usdgAmount) {
+      const [al, bal] = await Promise.all([this.chain.allowance(usdg, p.from, p.usdgSpender), this.chain.balanceOf(usdg, p.from)]);
+      approvalNeeded = al < p.usdgAmount;
+      const needsBalance = bal < p.usdgAmount;
       if (approvalNeeded || needsBalance) {
-        const slots = await this.discoverSlots(usdt, p.from, p.usdtSpender);
-        if (!slots) return { ok: false, error: "cannot simulate without USDT approval/balance and state overrides are unsupported by this RPC", approvalNeeded, usedOverrides: false };
+        const slots = await this.discoverSlots(usdg, p.from, p.usdgSpender);
+        if (!slots) return { ok: false, error: "cannot simulate without USDG approval/balance and state overrides are unsupported by this RPC", approvalNeeded, usedOverrides: false };
         const balSlot = keccak256(encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [p.from, BigInt(slots.balance)]));
         const inner = keccak256(encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [p.from, BigInt(slots.allowance)]));
-        const allowSlot = keccak256(encodeAbiParameters([{ type: "address" }, { type: "bytes32" }], [p.usdtSpender, inner]));
-        const amt = pad(numberToHex(p.usdtAmount * 2n));
-        const r = await this.call(p, [{ address: usdt, stateDiff: [{ slot: balSlot, value: amt }, { slot: allowSlot, value: amt }] }]);
+        const allowSlot = keccak256(encodeAbiParameters([{ type: "address" }, { type: "bytes32" }], [p.usdgSpender, inner]));
+        const amt = pad(numberToHex(p.usdgAmount * 2n));
+        const r = await this.call(p, [{ address: usdg, stateDiff: [{ slot: balSlot, value: amt }, { slot: allowSlot, value: amt }] }]);
         return { ...r, approvalNeeded, usedOverrides: true };
       }
     }

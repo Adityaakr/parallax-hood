@@ -1,17 +1,17 @@
 import type { Address } from "viem";
-import { WAD, applySlippage, formatWad, premiumBps, sharesForTokens, type Leg, type Candidate, type Policy } from "@parallax-hood/sdk";
+import { WAD, USDG_UNIT, applySlippage, formatWad, premiumBps, sharesForTokens, usdgToWad, type Leg, type Candidate, type Policy } from "@parallax-hood/sdk";
 import type { RepresentationInfo, UnderlyingInfo } from "./chain.js";
 import type { Venues, VenueQuote } from "./providers/venues.js";
 import type { MarketStatus } from "./providers/marketHours.js";
 
 export type ScoringContext = {
   underlying: UnderlyingInfo;
-  usdtIn: bigint; // 1e18
+  usdgIn: bigint; // raw USDG, 6 decimals
   policy: Policy;
   referencePrice: bigint | null; // 1e18 USD per share
   market: MarketStatus;
   limits: { maxAttestationAge: number; maxRatioAge: number; buysPaused: boolean };
-  usdt: Address;
+  usdg: Address;
   executor: Address; // contract that will execute the legs (router or vault): leg recipient
   gasUsd: bigint; // 1e18, estimated for the whole tx
   walletHoldings?: Map<string, bigint>; // token -> shares held by the wallet (for issuer cap on resulting holdings)
@@ -29,7 +29,7 @@ export type Chosen = {
   legs: Leg[];
   sharesOut: bigint;
   minShares: bigint;
-  usdtIn: bigint;
+  usdgIn: bigint;
   split: Array<{ token: Address; bps: number }>;
   why: string;
 };
@@ -43,9 +43,13 @@ export function reasonsForRegistry(rep: RepresentationInfo, limits: ScoringConte
   const r: string[] = [];
   if (!rep.active) r.push("representation deprecated in registry");
   if (limits.buysPaused) r.push("buys paused by guardian");
-  const attAge = now - rep.attestedAt;
-  if (rep.attestedAt === 0) r.push("no attestation posted for platform");
-  else if (attAge > limits.maxAttestationAge) r.push(`attestation stale (${(attAge / 3600).toFixed(1)}h > ${limits.maxAttestationAge / 3600}h)`);
+  // Robinhood publishes no attestation a contract can read, so the registry here runs with that gate off
+  // (an unbounded window). The check stays for any platform a registry does require one from.
+  if (attestationRequired(limits)) {
+    const attAge = now - rep.attestedAt;
+    if (rep.attestedAt === 0) r.push("no attestation posted for platform");
+    else if (attAge > limits.maxAttestationAge) r.push(`attestation stale (${(attAge / 3600).toFixed(1)}h > ${limits.maxAttestationAge / 3600}h)`);
+  }
   if (rep.ratioSource === "KEEPER" && now - rep.ratioUpdatedAt > limits.maxRatioAge) {
     r.push(`keeper ratio stale (${((now - rep.ratioUpdatedAt) / 3600).toFixed(1)}h > ${limits.maxRatioAge / 3600}h)`);
   }
@@ -53,10 +57,16 @@ export function reasonsForRegistry(rep: RepresentationInfo, limits: ScoringConte
   return r;
 }
 
-async function quoteCandidate(v: Venues, ctx: ScoringContext, rep: RepresentationInfo, usdtIn: bigint): Promise<ScoredCandidate> {
+/** A registry whose attestation window is a century or more has the gate switched off. */
+export function attestationRequired(limits: { maxAttestationAge: number }): boolean {
+  return limits.maxAttestationAge < 100 * 365 * 86_400;
+}
+
+async function quoteCandidate(v: Venues, ctx: ScoringContext, rep: RepresentationInfo, usdgIn: bigint): Promise<ScoredCandidate> {
   const now = ctx.now ?? Math.floor(Date.now() / 1000);
   const reasons = reasonsForRegistry(rep, ctx.limits, now);
   const registryEligible = rep.buyEligible;
+  const needsAttestation = attestationRequired(ctx.limits);
   const attestationAgeHours = rep.attestedAt === 0 ? null : (now - rep.attestedAt) / 3600;
 
   const base: Omit<ScoredCandidate, "quote" | "sharesOutBig" | "tokensOutBig"> = {
@@ -68,7 +78,7 @@ async function quoteCandidate(v: Venues, ctx: ScoringContext, rep: Representatio
     venue: "none",
     tokensOut: "0",
     sharesOut: "0",
-    effectiveCostUsd: formatWad(usdtIn + ctx.gasUsd, 6),
+    effectiveCostUsd: formatWad(usdgToWad(usdgIn) + ctx.gasUsd, 6),
     costPerShareUsd: "0",
     premiumBps: 0,
     pricePremiumBps: 0,
@@ -85,14 +95,16 @@ async function quoteCandidate(v: Venues, ctx: ScoringContext, rep: Representatio
   // policy: platform exclusion
   if (ctx.policy.excludePlatforms.includes(base.platform)) reasons.push(`platform ${base.platform} excluded by policy`);
   // policy: attestation age
-  if (attestationAgeHours !== null && attestationAgeHours > ctx.policy.maxAttestationAgeHours) {
-    reasons.push(`attestation ${attestationAgeHours.toFixed(1)}h older than policy max ${ctx.policy.maxAttestationAgeHours}h`);
+  if (needsAttestation) {
+    if (attestationAgeHours !== null && attestationAgeHours > ctx.policy.maxAttestationAgeHours) {
+      reasons.push(`attestation ${attestationAgeHours.toFixed(1)}h older than policy max ${ctx.policy.maxAttestationAgeHours}h`);
+    }
+    if (attestationAgeHours === null && !reasons.some((r) => r.includes("attestation"))) reasons.push("attestation age unknown");
   }
-  if (attestationAgeHours === null && !reasons.some((r) => r.includes("attestation"))) reasons.push("attestation age unknown");
 
-  const q = await v.bestExactInput(ctx.usdt, rep.token, usdtIn);
+  const q = await v.bestExactInput(ctx.usdg, rep.token, usdgIn);
   if (!q) {
-    reasons.push("no contract-executable AMM liquidity (Ondo trades via RFQ, which needs an EOA signature)");
+    reasons.push("no pool can fill this size");
     return { ...base, quote: null, sharesOutBig: 0n, tokensOutBig: 0n };
   }
   const shares = sharesForTokens(q.amountOut, rep.ratio);
@@ -100,26 +112,27 @@ async function quoteCandidate(v: Venues, ctx: ScoringContext, rep: Representatio
     reasons.push("quote returned zero shares");
     return { ...base, quote: q, sharesOutBig: 0n, tokensOutBig: q.amountOut, venue: q.venue };
   }
-  const costPerShare = ((usdtIn + ctx.gasUsd) * WAD) / shares; // effective, includes gas (spec)
+  const usdIn = usdgToWad(usdgIn); // USDG at $1, in the 1e18 scale prices use
+  const costPerShare = ((usdIn + ctx.gasUsd) * WAD) / shares; // effective, includes gas (spec)
   const prem = ctx.referencePrice ? premiumBps(costPerShare, ctx.referencePrice) : 0;
-  const pricePrem = ctx.referencePrice ? premiumBps((usdtIn * WAD) / shares, ctx.referencePrice) : 0; // ex-gas, for display
+  const pricePrem = ctx.referencePrice ? premiumBps((usdIn * WAD) / shares, ctx.referencePrice) : 0; // ex-gas, for display
 
-  // slippage vs marginal price: probe with 0.1 % of size (min 1 USDT)
-  const probe = usdtIn / 1000n > WAD ? usdtIn / 1000n : WAD;
-  const mOut = await v.marginalOut(ctx.usdt, rep.token, probe, q.fee);
+  // slippage vs marginal price: probe the same route with 0.1 % of size (min 1 USDG)
+  const probe = usdgIn / 1000n > USDG_UNIT ? usdgIn / 1000n : USDG_UNIT;
+  const mOut = probe >= usdgIn ? null : await v.marginalOut(ctx.usdg, rep.token, probe, q.route);
   let slippage = 0;
   if (mOut && mOut > 0n) {
-    const expected = (mOut * usdtIn) / probe;
+    const expected = (mOut * usdgIn) / probe;
     slippage = expected > q.amountOut ? Number(((expected - q.amountOut) * 10_000n) / expected) : 0;
   }
   if (slippage > ctx.policy.maxSlippageBps) reasons.push(`slippage ${slippage} bps > policy max ${ctx.policy.maxSlippageBps} bps`);
   if (ctx.referencePrice) {
     const cap = ctx.market.open ? ctx.policy.maxPremiumBps : ctx.policy.maxClosedMarketPremiumBps;
     /*
-     * A quote that returns dust is a malfunction, not an expensive fill. The aggregator has answered a $500
-     * MSFTon order with 0.0000005 shares, which scores as a premium of nineteen billion basis points: true, and
-     * useless to read. Past ten times the reference it is reported as what it is, and the honest premium is
-     * still in the record for anyone who wants it.
+     * A quote that returns dust is a malfunction, not an expensive fill: an order far larger than a thin pool
+     * holds walks the whole range and comes back with a sliver, which scores as a premium in the millions of
+     * basis points. True, and useless to read. Past ten times the reference it is reported as what it is, and
+     * the honest premium is still in the record for anyone who wants it.
      */
     if (prem > IMPLAUSIBLE_PREMIUM_BPS) {
       reasons.push(`venue returned an implausible quote: ${formatWad(costPerShare, 2)} per share against a ${formatWad(ctx.referencePrice ?? 0n, 2)} reference`);
@@ -176,9 +189,9 @@ function rank(cands: ScoredCandidate[], policy: Policy): ScoredCandidate[] {
   return [...eligible, ...rest];
 }
 
-/** Score every representation of the underlying for a buy of `usdtIn`, then pick the best single or split route. */
+/** Score every representation of the underlying for a buy of `usdgIn`, then pick the best single or split route. */
 export async function scoreBuy(v: Venues, ctx: ScoringContext): Promise<{ candidates: ScoredCandidate[]; chosen: Chosen | null }> {
-  const scored = await Promise.all(ctx.underlying.representations.map((rep) => quoteCandidate(v, ctx, rep, ctx.usdtIn)));
+  const scored = await Promise.all(ctx.underlying.representations.map((rep) => quoteCandidate(v, ctx, rep, ctx.usdgIn)));
   const ranked = rank(scored, ctx.policy);
   const eligible = ranked.filter((c) => c.eligible && c.quote);
   if (eligible.length === 0) return { candidates: ranked, chosen: null };
@@ -191,22 +204,22 @@ export async function scoreBuy(v: Venues, ctx: ScoringContext): Promise<{ candid
     const second = eligible[1]!;
     let bestShares = best.sharesOutBig;
     for (const bps of SPLITS) {
-      const a = (ctx.usdtIn * BigInt(bps)) / 10_000n;
-      const b = ctx.usdtIn - a;
-      const [qa, qb] = await Promise.all([v.bestExactInput(ctx.usdt, best.rep.token, a), v.bestExactInput(ctx.usdt, second.rep.token, b)]);
+      const a = (ctx.usdgIn * BigInt(bps)) / 10_000n;
+      const b = ctx.usdgIn - a;
+      const [qa, qb] = await Promise.all([v.bestExactInput(ctx.usdg, best.rep.token, a), v.bestExactInput(ctx.usdg, second.rep.token, b)]);
       if (!qa || !qb) continue;
       const shares = sharesForTokens(qa.amountOut, best.rep.ratio) + sharesForTokens(qb.amountOut, second.rep.ratio);
       if (shares > bestShares) {
         bestShares = shares;
         const legs = [
-          v.exactInputLeg(qa, ctx.usdt, best.rep.token, applySlippage(qa.amountOut, ctx.policy.maxSlippageBps), ctx.executor),
-          v.exactInputLeg(qb, ctx.usdt, second.rep.token, applySlippage(qb.amountOut, ctx.policy.maxSlippageBps), ctx.executor),
+          v.exactInputLeg(qa, ctx.usdg, best.rep.token, applySlippage(qa.amountOut, ctx.policy.maxSlippageBps), ctx.executor),
+          v.exactInputLeg(qb, ctx.usdg, second.rep.token, applySlippage(qb.amountOut, ctx.policy.maxSlippageBps), ctx.executor),
         ];
         chosen = {
           legs,
           sharesOut: shares,
           minShares: applySlippage(shares, ctx.policy.maxSlippageBps),
-          usdtIn: ctx.usdtIn,
+          usdgIn: ctx.usdgIn,
           split: [
             { token: best.rep.token, bps },
             { token: second.rep.token, bps: 10_000 - bps },
@@ -221,26 +234,26 @@ export async function scoreBuy(v: Venues, ctx: ScoringContext): Promise<{ candid
 
 function single(v: Venues, ctx: ScoringContext, c: ScoredCandidate): Chosen {
   const q = c.quote!;
-  const legs = [v.exactInputLeg(q, ctx.usdt, c.rep.token, applySlippage(q.amountOut, ctx.policy.maxSlippageBps), ctx.executor)];
+  const legs = [v.exactInputLeg(q, ctx.usdg, c.rep.token, applySlippage(q.amountOut, ctx.policy.maxSlippageBps), ctx.executor)];
   const others = ctx.underlying.representations.length - 1;
   const why =
     `${c.symbol} (${c.platform}) via ${c.venue}: ${c.costPerShareUsd} USD/share, ${c.premiumBps >= 0 ? "+" : ""}${c.premiumBps} bps vs reference, ` +
-    `slippage ${c.slippageBps} bps, ratio ${formatWad(c.rep.ratio, 6)} (${c.ratioSource}), attestation ${c.attestationAgeHours?.toFixed(1) ?? "?"}h old` +
+    `slippage ${c.slippageBps} bps, ratio ${formatWad(c.rep.ratio, 6)} (${c.ratioSource})` +
     (others > 0 ? `; ${others} other representation${others > 1 ? "s" : ""} scored lower or excluded` : "");
-  return { legs, sharesOut: c.sharesOutBig, minShares: applySlippage(c.sharesOutBig, ctx.policy.maxSlippageBps), usdtIn: ctx.usdtIn, split: [{ token: c.rep.token, bps: 10_000 }], why };
+  return { legs, sharesOut: c.sharesOutBig, minShares: applySlippage(c.sharesOutBig, ctx.policy.maxSlippageBps), usdgIn: ctx.usdgIn, split: [{ token: c.rep.token, bps: 10_000 }], why };
 }
 
-/** Sell side: quote token -> USDT for a specific representation and amount. */
-export async function scoreSell(v: Venues, ctx: { usdt: Address; executor: Address; policy: Policy; rep: RepresentationInfo; tokenAmount: bigint; referencePrice: bigint | null }) {
-  const q = await v.bestExactInput(ctx.rep.token, ctx.usdt, ctx.tokenAmount);
+/** Sell side: quote token -> USDG for a specific representation and amount. */
+export async function scoreSell(v: Venues, ctx: { usdg: Address; executor: Address; policy: Policy; rep: RepresentationInfo; tokenAmount: bigint; referencePrice: bigint | null }) {
+  const q = await v.bestExactInput(ctx.rep.token, ctx.usdg, ctx.tokenAmount);
   if (!q) return null;
   const shares = sharesForTokens(ctx.tokenAmount, ctx.rep.ratio);
-  const usdPerShare = shares > 0n ? (q.amountOut * WAD) / shares : 0n;
-  const leg = v.exactInputLeg(q, ctx.rep.token, ctx.usdt, applySlippage(q.amountOut, ctx.policy.maxSlippageBps), ctx.executor);
+  const usdPerShare = shares > 0n ? (usdgToWad(q.amountOut) * WAD) / shares : 0n;
+  const leg = v.exactInputLeg(q, ctx.rep.token, ctx.usdg, applySlippage(q.amountOut, ctx.policy.maxSlippageBps), ctx.executor);
   return {
     quote: q,
-    usdtOut: q.amountOut,
-    minUsdtOut: applySlippage(q.amountOut, ctx.policy.maxSlippageBps),
+    usdgOut: q.amountOut,
+    minUsdgOut: applySlippage(q.amountOut, ctx.policy.maxSlippageBps),
     shares,
     usdPerShare,
     premiumBps: ctx.referencePrice ? premiumBps(usdPerShare, ctx.referencePrice) : 0,

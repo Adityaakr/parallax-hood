@@ -91,12 +91,12 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.0
         version: 1.19.17(hono@4.13.8)
-      '@parallax-hood/binance-client':
-        specifier: workspace:*
-        version: link:../../packages/binance-client
       '@parallax-hood/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@parallax-hood/uniswap-client':
+        specifier: workspace:*
+        version: link:../../packages/uniswap-client
       hono:
         specifier: ^4.6.0
         version: 4.13.8
@@ -243,9 +243,6 @@ importers:
 
   scripts:
     dependencies:
-      '@parallax-hood/binance-client':
-        specifier: workspace:*
-        version: link:../packages/binance-client
       '@parallax-hood/sdk':
         specifier: workspace:*
         version: link:../packages/sdk

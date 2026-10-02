@@ -1,6 +1,6 @@
 import { type Address, encodeFunctionData, getAddress, isAddress } from "viem";
 import {
-  BasketVaultAbi, WAD, applySlippage, formatWad, parseWad, proRata, requiredShares, serializeLegs, sharesForTokens, tokensForShares, idToTicker, tickerToId,
+  BasketVaultAbi, WAD, applySlippage, formatWad, parseWad, parseUsdg, formatUsdg, usdgToWad, proRata, requiredShares, serializeLegs, sharesForTokens, tokensForShares, idToTicker, tickerToId,
   PolicySchema, feeOn, type Leg, type Policy,
 } from "@parallax-hood/sdk";
 import type { Chain, RepresentationInfo } from "./chain.js";
@@ -11,7 +11,7 @@ import { logger } from "./log.js";
 import { PERIODS, type PriceHistory, type Period } from "./history.js";
 
 const log = logger("baskets");
-const MINT_BUFFER_BPS = 30n; // headroom on amountInMaximum; unspent USDT is refunded by the vault
+const MINT_BUFFER_BPS = 30n; // headroom on amountInMaximum; unspent USDG is refunded by the vault
 /* Budget sizing. A dollar of NAV costs more than a dollar to buy: the protocol fee, the venues' spread over the
    reference price, and the max-in buffer. The real figure is measured on every plan; this is what a cold cache
    assumes, and the headroom keeps a slightly stale measurement from sizing an order above the buyer's budget. */
@@ -26,7 +26,7 @@ export class Baskets {
 
   /** ticker → the representation whose pool prices its history (null when no pool oracle reaches back). */
   private oracleTokens = new Map<string, { token: Address; ratio: bigint } | null>();
-  /** basket → USDT spent per dollar of NAV on the last clean plan, the sizing input for a budgeted mint. */
+  /** basket → USDG spent per dollar of NAV on the last clean plan, the sizing input for a budgeted mint. */
   private mintCostRatio = new Map<string, number>();
 
   async resolveBasket(addressOrSymbol: string): Promise<Address> {
@@ -51,40 +51,21 @@ export class Baskets {
   // ------------------------------------------------------------------
 
   /**
-   * The smallest leg the Binance aggregator's desks fill. Measured against AAPLon/AMZNon on mainnet
-   * (scripts/probe-desk.mts, 22 Sep 2026): $5.00 is refused with "Minimum order amount is 5 USD", $5.05 fills.
+   * The smallest order worth quoting. Every leg of a mint has to buy at least one raw unit of its token, and a
+   * one-dollar order across seven constituents is fourteen cents a leg: fillable, but the gas is a visible share
+   * of it. Below a dollar the fee and the rounding stop being noise.
    */
-  static readonly AGG_MIN_LEG_USD = 5.05;
+  static readonly FLOOR_USD = 1;
 
-  /** House floor: below this an order is not worth its gas, and it is the desk's own per-leg minimum. */
-  static readonly FLOOR_USD = 5;
-
-  /**
-   * The minimum is $5 (Aditya, 22 Sep 2026), raised only where a constituent makes it impossible: one that
-   * trades solely through the aggregator's desk (AAPL and AMZN exist on BSC only as Ondo tokens, with no usable
-   * PancakeSwap pool) needs at least AGG_MIN_LEG_USD in its own leg, so the order must be that over the
-   * constituent's weight. Where every constituent has a pool, $5 stands.
-   */
-  async minUsd(constituents: { ticker: string }[], allocation: { weightBps: number | null }[]) {
-    if (this.chain.isMocks) return Baskets.FLOOR_USD;
-    let min = Baskets.FLOOR_USD;
-    for (const [i, c] of constituents.entries()) {
-      const w = allocation[i]?.weightBps;
-      if (!w) continue;
-      const u = await this.chain.underlying(tickerToId(c.ticker)).catch(() => null);
-      const reps = u?.representations.filter((r) => r.buyEligible) ?? [];
-      if (reps.length === 0) continue;
-      const pooled = (await Promise.all(reps.map((r) => this.r.venues.hasPool(r.token)))).some(Boolean);
-      if (!pooled) min = Math.max(min, Math.ceil((Baskets.AGG_MIN_LEG_USD * 10_000) / w));
-    }
-    return min;
+  async minUsd(_constituents: { ticker: string }[], _allocation: { weightBps: number | null }[]) {
+    return Baskets.FLOOR_USD;
   }
 
   /**
    * Price return of one unit over each period: Σ sharesPerUnit × price(t) across the constituents whose price
-   * at that point can be sourced. Two sources, in order — a Chainlink feed on BSC (the Mag 7 only), else the
-   * deepest PancakeSwap v3 pool's own TWAP oracle, which reaches back as far as its observation buffer holds
-   * (days on a busy pool). A period is null unless every constituent can be priced then, and `coverageBps` says
+   * at that point can be sourced. Sources, in order: the Chainlink feed's own rounds, the underlying's daily
+   * closes, else the deepest Uniswap v3 pool's TWAP oracle, which reaches back as far as its observation buffer
+   * holds. A period is null unless every constituent can be priced then, and `coverageBps` says
    * how much of today's NAV the priced constituents are, so a partial figure is never mistaken for a full one.
    */
   async performance(constituents: { ticker: string; sharesPerUnit: string; referencePrice: string | null }[]) {
@@ -116,7 +97,7 @@ export class Baskets {
       returns[k] = thenValue === 0n ? null : Number(((nowValue - thenValue) * 10_000n) / thenValue);
     }
     const unpriced = priced.filter((c) => c.source === null).map((c) => c.ticker);
-    const label = { chainlink: "chainlink rounds", market: "daily closes", pool: "pancakeswap v3 twap" } as const;
+    const label = { chainlink: "chainlink rounds", market: "daily closes", pool: "uniswap v3 twap" } as const;
     return {
       returns, coverage, coverageBps, covered: covered.length, total: constituents.length, unpriced,
       source: used.size === 0 ? null : [...used].map((x) => label[x as keyof typeof label]).join(" + ") + ", price return, dividends excluded",
@@ -156,9 +137,8 @@ export class Baskets {
   }
 
   /**
-   * Which source prices `ticker`'s history, in order of standing: a Chainlink feed on BSC (onchain, the Mag 7
-   * only), then the underlying's daily closes (reaches two years), then a PancakeSwap pool's TWAP oracle (live
-   * but only days deep). Whichever is chosen answers *both* ends of a return, so no figure straddles two
+   * Which source prices `ticker`'s history, in order of standing: its Chainlink feed (onchain rounds), then the
+   * underlying's daily closes (reaches two years), then a Uniswap pool's TWAP oracle (live but only days deep). Whichever is chosen answers *both* ends of a return, so no figure straddles two
    * sources and inherits the gap between them.
    */
   private async priceSource(ticker: string): Promise<"chainlink" | "market" | "pool" | null> {
@@ -187,31 +167,30 @@ export class Baskets {
   }
 
   /**
-   * Per-constituent weight by value today, the 24h move and a 7-day sparkline where a source reaches, plus the
-   * company figures Binance publishes (52-week range, market cap, P/E, payout) so a name without a feed still
-   * says something. `priceSource` names where the history came from, or null when there is none.
+   * Per-constituent weight by value today, the 24h move and a 7-day sparkline where a source reaches.
+   * `priceSource` names where the history came from, or null when there is none. `fundamentals` is always null
+   * here: no source on Robinhood Chain publishes company figures, and none are invented.
    */
   async allocation(constituents: { ticker: string; sharesPerUnit: string; referencePrice: string | null }[]) {
     const navs = constituents.map((c) => (c.referencePrice ? (BigInt(c.sharesPerUnit) * parseWad(c.referencePrice)) / WAD : 0n));
     const total = navs.reduce((a, v) => a + v, 0n);
-    const brands = await this.r.binance.brands();
+    const brands = this.chain.catalogue.brands();
     const now = Math.floor(Date.now() / 1000);
     return Promise.all(constituents.map(async (c, i) => {
       const meta = brands.get(c.ticker.toUpperCase());
       const source = await this.priceSource(c.ticker);
-      const [ret, series, live24h, fundamentals] = await Promise.all([
+      const [ret, series, live24h] = await Promise.all([
         source === "chainlink" ? this.history.returns(c.ticker) : this.sourceReturns(c.ticker, now),
         source === "chainlink" ? this.history.series(c.ticker, 7, 14) : source === "market" ? this.r.marketHistory.series(c.ticker, 7, 14) : this.poolSeries(c.ticker, now),
         // a pool oracle is live where a daily close is a day old, so it wins the 24h figure when it reaches
         this.poolChange24h(c.ticker, now),
-        this.constituentFundamentals(c.ticker),
       ]);
       return {
         ticker: c.ticker, name: meta?.name ?? null, logoUrl: meta?.logoUrl ?? null,
         weightBps: total === 0n ? null : Number((navs[i]! * 10_000n) / total),
         valuePerUnitUsd: formatWad(navs[i]!, 4), priceUsd: c.referencePrice,
         change24hBps: live24h ?? ret?.d1 ?? null, sparkline: series?.map((p) => Number(BigInt(p.price) / 10n ** 14n) / 10_000) ?? null,
-        priceSource: source, fundamentals,
+        priceSource: source, fundamentals: null,
       };
     }));
   }
@@ -253,16 +232,6 @@ export class Baskets {
       if (p) out.push({ t, price: p.toString() });
     }
     return out.length > 1 ? out : null;
-  }
-
-  /** Binance's figures for the underlying behind a ticker, from any of its representations. */
-  private async constituentFundamentals(ticker: string) {
-    const u = await this.chain.underlying(tickerToId(ticker)).catch(() => null);
-    for (const rep of u?.representations ?? []) {
-      const f = await this.r.binance.fundamentals(rep.token);
-      if (f) return f;
-    }
-    return null;
   }
 
   private cardMeta(symbol: string) {
@@ -328,10 +297,9 @@ export class Baskets {
     if (this.chain.isQuoteOnly) {
       return Promise.all(this.chain.fileIndices().map(async (idx) => {
         const constituents = await Promise.all(idx.constituents.map(async (c) => {
-          const stocks = await this.r.stocks();
-          const st = stocks.stocks.find((x) => x.ticker === c.ticker);
-          const rep = st?.representations.find((r) => r.binance?.referencePrice);
-          return { ticker: c.ticker, sharesPerUnit: c.sharesPerUnit, referencePrice: rep?.binance?.referencePrice ?? null };
+          const u = await this.chain.underlying(tickerToId(c.ticker)).catch(() => null);
+          const ref = u ? await this.r.referencePrice(u) : null;
+          return { ticker: c.ticker, sharesPerUnit: c.sharesPerUnit, referencePrice: ref ? formatWad(ref.price, 4) : null };
         }));
         const nav = constituents.reduce((a, c) => a + (c.referencePrice ? (BigInt(c.sharesPerUnit) * parseWad(c.referencePrice)) / WAD : 0n), 0n);
         const allocation = await this.allocation(constituents);
@@ -363,14 +331,14 @@ export class Baskets {
     const universe = await this.chain.allUnderlyings();
     // the issuers the vault would buy from, with nothing held yet
     const reps = async (ticker: string) => Promise.all((universe.find((u) => u.ticker === ticker)?.representations ?? []).map(async (r) => {
-      const depth = await this.r.venues.depth(r.token).catch(() => ({ usdt: 0n, tiers: [] as number[], bestFee: null }));
+      const depth = await this.r.venues.depth(r.token).catch(() => ({ usdg: 0n, tiers: [] as number[], bestFee: null }));
       return {
         token: r.token, symbol: r.symbol, platform: r.platform, tokens: "0", shares: "0", shareBps: 0, buyEligible: r.buyEligible,
         ratio: r.ratio.toString(), ratioSource: r.ratioSource,
-        poolUsdt: depth.usdt.toString(), poolFees: depth.tiers, route: depth.tiers.length > 0 ? "pool" : "desk",
+        poolUsdg: depth.usdg.toString(), poolFees: depth.tiers, route: depth.tiers.length > 0 ? "pool" : "none",
       };
     }));
-    return { ...card, totalSupply: "0", usdtBalance: "0", navSource: "binance reference prices (display only)", backingOk: true, issuerMix: [], why: Object.fromEntries(idx.constituents.map((c) => [c.ticker, c.why ?? null])),
+    return { ...card, totalSupply: "0", usdgBalance: "0", navSource: "chainlink reference prices (display only)", backingOk: true, issuerMix: [], why: Object.fromEntries(idx.constituents.map((c) => [c.ticker, c.why ?? null])),
       constituents: await Promise.all(idx.constituents.map(async (c) => {
         const a = card.allocation.find((x) => x.ticker === c.ticker);
         return {
@@ -405,11 +373,11 @@ export class Baskets {
         const platform = idToTicker(rv.platformId);
         issuerMix[platform] = (issuerMix[platform] ?? 0n) + rv.shares;
         // what could be filled onchain right now: an empty vault says nothing about where a mint would route
-        const depth = await this.r.venues.depth(rv.token).catch(() => ({ usdt: 0n, tiers: [] as number[], bestFee: null }));
+        const depth = await this.r.venues.depth(rv.token).catch(() => ({ usdg: 0n, tiers: [] as number[], bestFee: null }));
         return {
           token: rv.token, symbol: info?.symbol ?? rv.token, platform, tokens: rv.tokens.toString(), shares: rv.shares.toString(),
           shareBps: rv.shareBps, buyEligible: rv.buyEligible, ratio: info?.ratio.toString() ?? null, ratioSource: info?.ratioSource ?? null,
-          poolUsdt: depth.usdt.toString(), poolFees: depth.tiers, route: depth.tiers.length > 0 ? "pool" : "desk",
+          poolUsdg: depth.usdg.toString(), poolFees: depth.tiers, route: depth.tiers.length > 0 ? "pool" : "none",
         };
       }));
       totalShares += c.heldShares;
@@ -433,7 +401,7 @@ export class Baskets {
     const backingOk = constituents.every((c) => c.backingRatio === null || c.backingRatio >= 1);
     const mix = Object.entries(issuerMix).map(([platform, shares]) => ({ platform, bps: totalShares === 0n ? 0 : Number((shares * 10_000n) / totalShares) }));
     return {
-      address: basket, name: meta.name, symbol: meta.symbol, totalSupply: meta.totalSupply.toString(), usdtBalance: meta.usdtBalance.toString(),
+      address: basket, name: meta.name, symbol: meta.symbol, totalSupply: meta.totalSupply.toString(), usdgBalance: meta.usdgBalance.toString(),
       navPerUnitUsd: navKnown ? formatWad(navPerUnit, 4) : null, navSource: navKnown ? "chainlink/onchain (display only)" : "unavailable",
       backingOk, issuerMix: mix, constituents,
     };
@@ -444,43 +412,28 @@ export class Baskets {
   // ------------------------------------------------------------------
 
   /**
-   * Quote a mint against a USDT budget: the caller says what it is willing to spend, and the quote comes back
-   * sized so `maxUsdtIn` — the ceiling the vault may pull, fee included — does not exceed it. Units are priced
+   * Quote a mint against a USDG budget: the caller says what it is willing to spend, and the quote comes back
+   * sized so `maxUsdgIn` — the ceiling the vault may pull, fee included — does not exceed it. Units are priced
    * at NAV times the last measured cost of a dollar of NAV; if that estimate overshoots, the plan runs once
    * more with the cost this plan just measured. One pass when warm, two when cold or after a spread move.
    */
-  private async quoteMintForBudget(p: { basket: string; budgetUsdt: string; policy?: Partial<Policy>; wallet?: string; recipient?: string }) {
-    const budget = parseWad(p.budgetUsdt);
+  private async quoteMintForBudget(p: { basket: string; budgetUsdg: string; policy?: Partial<Policy>; wallet?: string; recipient?: string }) {
+    const budget = parseUsdg(p.budgetUsdg);
     if (budget <= 0n) throw new Error("budget must be positive");
-    const first = await this.planWithFallback(p);
-    if (first.problems.length || BigInt(first.maxUsdtIn) <= budget) return first;
-    const second = await this.planWithFallback(p);
-    if (second.problems.length || BigInt(second.maxUsdtIn) <= budget) return second;
-    return { ...second, tx: null, problems: [...second.problems, `the cheapest route for this index needs ${formatWad(BigInt(second.maxUsdtIn), 2)} USDT, more than the ${formatWad(budget, 2)} budget`] };
-  }
-
-  /** Quote a mint, sized either by units, by NAV value (`usdAmount`) or by what the buyer will spend (`budgetUsdt`). */
-  async quoteMint(p: { basket: string; units?: string; usdAmount?: string; budgetUsdt?: string; policy?: Partial<Policy>; wallet?: string; recipient?: string }) {
-    if (p.budgetUsdt) return this.quoteMintForBudget({ ...p, budgetUsdt: p.budgetUsdt });
-    return this.planWithFallback(p);
-  }
-
-  /**
-   * Plan a mint. If the plan fails simulation and it used an aggregator route, re-plan with pools only and
-   * return that instead: an unsimulatable plan is worse than a slightly more expensive one that works. The
-   * result says which happened.
-   */
-  private async planWithFallback(p: { basket: string; units?: string; usdAmount?: string; budgetUsdt?: string; policy?: Partial<Policy>; wallet?: string; recipient?: string }) {
     const first = await this.planMint(p);
-    const usedAggregator = first.breakdown.some((b) => b.fills.some((f) => f.venue.startsWith("binance-agg")));
-    if (first.tx || !p.wallet || !usedAggregator || !first.simulation || first.simulation.ok) return first;
-    const fallback = await this.r.venues.withoutAggregator(() => this.planMint(p));
-    if (!fallback.tx) return { ...first, fallbackTried: true };
-    log.info("mint: aggregator plan failed simulation, using pools", { basket: p.basket, error: first.simulation.error?.slice(0, 120) });
-    return { ...fallback, fellBackToPools: true, aggregatorError: first.simulation.error };
+    if (first.problems.length || BigInt(first.maxUsdgIn) <= budget) return first;
+    const second = await this.planMint(p);
+    if (second.problems.length || BigInt(second.maxUsdgIn) <= budget) return second;
+    return { ...second, tx: null, problems: [...second.problems, `the cheapest route for this index needs ${formatUsdg(BigInt(second.maxUsdgIn), 2)} USDG, more than the ${formatUsdg(budget, 2)} budget`] };
   }
 
-  private async planMint(p: { basket: string; units?: string; usdAmount?: string; budgetUsdt?: string; policy?: Partial<Policy>; wallet?: string; recipient?: string }) {
+  /** Quote a mint, sized either by units, by NAV value (`usdAmount`) or by what the buyer will spend (`budgetUsdg`). */
+  async quoteMint(p: { basket: string; units?: string; usdAmount?: string; budgetUsdg?: string; policy?: Partial<Policy>; wallet?: string; recipient?: string }) {
+    if (p.budgetUsdg) return this.quoteMintForBudget({ ...p, budgetUsdg: p.budgetUsdg });
+    return this.planMint(p);
+  }
+
+  private async planMint(p: { basket: string; units?: string; usdAmount?: string; budgetUsdg?: string; policy?: Partial<Policy>; wallet?: string; recipient?: string }) {
     const policy = PolicySchema.parse(p.policy ?? {});
     const basket = await this.resolveBasket(p.basket);
     const meta = await this.chain.basketMeta(basket);
@@ -492,15 +445,15 @@ export class Baskets {
     let units: bigint;
     if (p.units) units = parseWad(p.units);
     // a budget is what the buyer spends, so size the units on the last measured cost of a dollar of NAV
-    else if (p.budgetUsdt && summary.navPerUnitUsd) units = (parseWad(p.budgetUsdt) * WAD * RATIO_SCALE) / (parseWad(summary.navPerUnitUsd) * BigInt(Math.round((this.mintCostRatio.get(basket) ?? COLD_MINT_COST_RATIO) * MINT_BUDGET_HEADROOM * Number(RATIO_SCALE))));
+    else if (p.budgetUsdg && summary.navPerUnitUsd) units = (usdgToWad(parseUsdg(p.budgetUsdg)) * WAD * RATIO_SCALE) / (parseWad(summary.navPerUnitUsd) * BigInt(Math.round((this.mintCostRatio.get(basket) ?? COLD_MINT_COST_RATIO) * MINT_BUDGET_HEADROOM * Number(RATIO_SCALE))));
     else if (p.usdAmount && summary.navPerUnitUsd) units = (parseWad(p.usdAmount) * WAD) / parseWad(summary.navPerUnitUsd);
     else throw new Error("units, a budget, or usdAmount with a known NAV, is required");
     if (units <= 0n) throw new Error("units must be positive");
 
     const legs: Leg[] = [];
     const breakdown = [];
-    let maxUsdtIn = 0n;
-    let expectedUsdt = 0n;
+    let maxUsdgIn = 0n;
+    let expectedUsdg = 0n;
     const fee = await this.chain.fee();
     const problems: string[] = [];
     const now = await this.chain.now();
@@ -537,8 +490,8 @@ export class Baskets {
       const priced = [];
       for (const rep of eligible) {
         const tokens = tokensForShares(needed, rep.ratio);
-        const q = needed === 0n ? null : await this.r.venues.bestExactOutput(this.chain.d.usdt, rep.token, tokens);
-        priced.push({ rep, tokens, q, costPerShare: q ? (q.amountIn * WAD) / needed : null });
+        const q = needed === 0n ? null : await this.r.venues.bestExactOutput(this.chain.d.usdg, rep.token, tokens);
+        priced.push({ rep, tokens, q, costPerShare: q ? (usdgToWad(q.amountIn) * WAD) / needed : null });
       }
       priced.sort((a, b) => (a.costPerShare === null ? 1 : b.costPerShare === null ? -1 : a.costPerShare < b.costPerShare ? -1 : 1));
       let remaining = needed;
@@ -550,24 +503,24 @@ export class Baskets {
         const take = room < remaining ? (room > 0n ? room : 0n) : remaining;
         if (take === 0n) continue;
         const tokens = tokensForShares(take, cand.rep.ratio);
-        const q = take === needed ? cand.q : await this.r.venues.bestExactOutput(this.chain.d.usdt, cand.rep.token, tokens);
+        const q = take === needed ? cand.q : await this.r.venues.bestExactOutput(this.chain.d.usdg, cand.rep.token, tokens);
         if (!q) continue;
         const maxIn = q.amountIn + (q.amountIn * MINT_BUFFER_BPS) / 10_000n + 1n;
-        legs.push(this.r.venues.exactOutputLeg(q, this.chain.d.usdt, cand.rep.token, maxIn, basket));
-        maxUsdtIn += maxIn;
-        expectedUsdt += q.amountIn;
+        legs.push(this.r.venues.exactOutputLeg(q, this.chain.d.usdg, cand.rep.token, maxIn, basket));
+        maxUsdgIn += maxIn;
+        expectedUsdg += q.amountIn;
         heldByPlatform.set(cand.rep.platform, (heldByPlatform.get(cand.rep.platform) ?? 0n) + take);
         fills.push({
           token: cand.rep.token, symbol: cand.rep.symbol, platform: cand.rep.platform, venue: q.venue, shares: take.toString(), tokens: tokens.toString(),
-          usdtIn: q.amountIn.toString(), maxUsdtIn: maxIn.toString(), costPerShareUsd: formatWad((q.amountIn * WAD) / take, 4),
-          premiumBps: ref ? Number((((q.amountIn * WAD) / take - ref.price) * 10_000n) / ref.price) : null,
+          usdgIn: q.amountIn.toString(), maxUsdgIn: maxIn.toString(), costPerShareUsd: formatWad((usdgToWad(q.amountIn) * WAD) / take, 4),
+          premiumBps: ref ? Number((((usdgToWad(q.amountIn) * WAD) / take - ref.price) * 10_000n) / ref.price) : null,
         });
         remaining -= take;
       }
       if (remaining > 0n && needed > 0n) {
         const detail = eligible.length === 0
           ? `no representation is buy-eligible right now — ${rejected.join(" · ")}`
-          : `${eligible.length} eligible representation(s); ${priced.filter((x) => !x.q).length} without contract-executable liquidity${capActive ? ", issuer cap active" : ""}${rejected.length ? `; also out: ${rejected.join(" · ")}` : ""}`;
+          : `${eligible.length} eligible representation(s); ${priced.filter((x) => !x.q).length} with no pool that can fill this size${capActive ? ", issuer cap active" : ""}${rejected.length ? `; also out: ${rejected.join(" · ")}` : ""}`;
         problems.push(`${idToTicker(c.underlyingId)}: could not source ${formatWad(remaining, 6)} shares (${detail})`);
       }
       breakdown.push({
@@ -577,39 +530,30 @@ export class Baskets {
       });
     }
 
-    // aggregator legs are priced with a placeholder; fetch the real calldata with the vault as the taker, before
-    // the record is hashed, so the quote record matches the legs that will actually be sent
-    for (let i = 0; i < legs.length; i++) {
-      if (legs[i]!.data !== "0x") continue;
-      const m = await this.r.venues.materializeLeg(legs[i]!, basket, BigInt(policy.maxSlippageBps));
-      if (m.ok) legs[i] = m.leg;
-      else problems.push(`${await this.chain.symbol(legs[i]!.tokenOut)}: aggregator route unavailable (${m.reason})`);
-    }
-
-    // the vault charges the fee on what it spends, out of the unspent remainder: maxUsdtIn must cover the fee on
+    // the vault charges the fee on what it spends, out of the unspent remainder: maxUsdgIn must cover the fee on
     // the worst case, and the expected cost carries the fee on the expected spend
-    const feeOnMax = feeOn(maxUsdtIn, fee.bps);
-    const feeOnExpected = feeOn(expectedUsdt, fee.bps);
-    maxUsdtIn += feeOnMax;
+    const feeOnMax = feeOn(maxUsdgIn, fee.bps);
+    const feeOnExpected = feeOn(expectedUsdg, fee.bps);
+    maxUsdgIn += feeOnMax;
     // what a dollar of NAV actually costs to buy right now (spread + buffer + fee), so a budget can be sized
     if (summary.navPerUnitUsd && !problems.length) {
       const navValue = (units * parseWad(summary.navPerUnitUsd)) / WAD;
-      if (navValue > 0n) this.mintCostRatio.set(basket, Number(maxUsdtIn) / Number(navValue));
+      if (navValue > 0n) this.mintCostRatio.set(basket, Number(usdgToWad(maxUsdgIn)) / Number(navValue));
     }
     const record = {
       kind: "mint", basket, symbol: meta.symbol, units: units.toString(), timestamp: now, policy, dataSource: this.r.dataSource,
-      navPerUnitUsd: summary.navPerUnitUsd, expectedUsdt: (expectedUsdt + feeOnExpected).toString(), maxUsdtIn: maxUsdtIn.toString(),
-      fee: { bps: fee.bps, usdt: feeOnExpected.toString(), recipient: fee.recipient, onInKindRedeem: false },
+      navPerUnitUsd: summary.navPerUnitUsd, expectedUsdg: (expectedUsdg + feeOnExpected).toString(), maxUsdgIn: maxUsdgIn.toString(),
+      fee: { bps: fee.bps, usdg: feeOnExpected.toString(), recipient: fee.recipient, onInKindRedeem: false },
       legs: serializeLegs(legs), breakdown, problems, status: problems.length ? "no_route" : "ok", chainId: this.chain.cfg.CHAIN_ID, recipient: recipient ?? null,
     };
     const quoteHash = quoteHashOf(record);
     let tx = null;
     let simulation = null;
     if (!problems.length && recipient) {
-      const data = encodeFunctionData({ abi: BasketVaultAbi, functionName: "mint", args: [units, maxUsdtIn, legs, recipient, quoteHash] });
+      const data = encodeFunctionData({ abi: BasketVaultAbi, functionName: "mint", args: [units, maxUsdgIn, legs, recipient, quoteHash] });
       tx = { to: basket, data, value: "0", from: wallet, chainId: this.chain.cfg.CHAIN_ID } as { to: string; data: string; value: string; from?: string; chainId: number; gas?: string };
       if (wallet) {
-        const s = await this.r.sim.simulate({ from: wallet, to: basket, data: data, usdtSpender: basket, usdtAmount: maxUsdtIn });
+        const s = await this.r.sim.simulate({ from: wallet, to: basket, data: data, usdgSpender: basket, usdgAmount: maxUsdgIn });
         simulation = { ok: s.ok, gasUsed: s.gasUsed, error: s.error, approvalNeeded: s.approvalNeeded };
         if (s.gasUsed) tx.gas = ((BigInt(s.gasUsed) * 12n) / 10n).toString();
         if (!s.ok) {
@@ -618,7 +562,7 @@ export class Baskets {
         }
       }
     }
-    const out = { ...record, tx, simulation, quoteHash, usdt: this.chain.d.usdt, limits };
+    const out = { ...record, tx, simulation, quoteHash, usdg: this.chain.d.usdg, limits };
     this.r.db.putQuote(quoteHash, "mint", JSON.stringify(out), { basket });
     return out;
   }
@@ -641,9 +585,9 @@ export class Baskets {
 
     const legs: Leg[] = [];
     const slices = [];
-    let usdtOut = 0n;
-    let minUsdtOut = 0n;
-    const usdtSlice = proRata(meta.usdtBalance, units, meta.totalSupply);
+    let usdgOut = 0n;
+    let minUsdgOut = 0n;
+    const usdgSlice = proRata(meta.usdgBalance, units, meta.totalSupply);
     for (const c of comp) {
       const u = await this.chain.underlying(c.underlyingId);
       const ref = await this.r.referencePrice(u);
@@ -651,15 +595,15 @@ export class Baskets {
         const amount = proRata(rv.tokens, units, meta.totalSupply);
         if (amount === 0n) continue;
         const rep = u.representations.find((x) => x.token.toLowerCase() === rv.token.toLowerCase())!;
-        let sold: { venue: string; usdtOut: string; minUsdtOut: string } | null = null;
+        let sold: { venue: string; usdgOut: string; minUsdgOut: string } | null = null;
         if (!p.inKind) {
-          const q = await this.r.venues.bestExactInput(rep.token, this.chain.d.usdt, amount);
+          const q = await this.r.venues.bestExactInput(rep.token, this.chain.d.usdg, amount);
           if (q) {
             const min = applySlippage(q.amountOut, policy.maxSlippageBps);
-            legs.push(this.r.venues.exactInputLeg(q, rep.token, this.chain.d.usdt, min, basket));
-            usdtOut += q.amountOut;
-            minUsdtOut += min;
-            sold = { venue: q.venue, usdtOut: q.amountOut.toString(), minUsdtOut: min.toString() };
+            legs.push(this.r.venues.exactInputLeg(q, rep.token, this.chain.d.usdg, min, basket));
+            usdgOut += q.amountOut;
+            minUsdgOut += min;
+            sold = { venue: q.venue, usdgOut: q.amountOut.toString(), minUsdgOut: min.toString() };
           }
         }
         slices.push({
@@ -669,17 +613,17 @@ export class Baskets {
         });
       }
     }
-    usdtOut += usdtSlice;
-    minUsdtOut += usdtSlice;
-    // a USDT redemption pays the fee out of the proceeds and the onchain minimum is net of it; in kind carries none
+    usdgOut += usdgSlice;
+    minUsdgOut += usdgSlice;
+    // a USDG redemption pays the fee out of the proceeds and the onchain minimum is net of it; in kind carries none
     const fee = await this.chain.fee();
-    const feeUsdt = p.inKind ? 0n : feeOn(usdtOut, fee.bps);
-    usdtOut -= feeUsdt;
-    minUsdtOut -= p.inKind ? 0n : feeOn(minUsdtOut, fee.bps);
+    const feeUsdg = p.inKind ? 0n : feeOn(usdgOut, fee.bps);
+    usdgOut -= feeUsdg;
+    minUsdgOut -= p.inKind ? 0n : feeOn(minUsdgOut, fee.bps);
     const record = {
       kind: p.inKind ? "redeemInKind" : "redeem", basket, symbol: meta.symbol, units: units.toString(), timestamp: now, policy, dataSource: this.r.dataSource,
-      usdtSlice: usdtSlice.toString(), usdtOut: usdtOut.toString(), minUsdtOut: minUsdtOut.toString(), legs: serializeLegs(legs), slices,
-      fee: { bps: p.inKind ? 0 : fee.bps, usdt: feeUsdt.toString(), recipient: fee.recipient, onInKindRedeem: false },
+      usdgSlice: usdgSlice.toString(), usdgOut: usdgOut.toString(), minUsdgOut: minUsdgOut.toString(), legs: serializeLegs(legs), slices,
+      fee: { bps: p.inKind ? 0 : fee.bps, usdg: feeUsdg.toString(), recipient: fee.recipient, onInKindRedeem: false },
       chainId: this.chain.cfg.CHAIN_ID, recipient: recipient ?? null, status: "ok",
     };
     const quoteHash = quoteHashOf(record);
@@ -688,7 +632,7 @@ export class Baskets {
     if (recipient) {
       const data = p.inKind
         ? encodeFunctionData({ abi: BasketVaultAbi, functionName: "redeemInKind", args: [units, recipient] })
-        : encodeFunctionData({ abi: BasketVaultAbi, functionName: "redeem", args: [units, minUsdtOut, legs, recipient, quoteHash] });
+        : encodeFunctionData({ abi: BasketVaultAbi, functionName: "redeem", args: [units, minUsdgOut, legs, recipient, quoteHash] });
       tx = { to: basket, data, value: "0", from: wallet, chainId: this.chain.cfg.CHAIN_ID } as { to: string; data: string; value: string; from?: string; chainId: number; gas?: string };
       if (wallet) {
         const s = await this.r.sim.simulate({ from: wallet, to: basket, data });
@@ -767,9 +711,9 @@ export class Baskets {
             for (const fracBps of [10_000n, 5_000n, 2_500n, 1_000n]) {
               const sellTokens = (from.tokens * fracBps) / 10_000n;
               if (sellTokens === 0n) continue;
-              const q1 = await this.r.venues.bestExactInput(fromRep.token, this.chain.d.usdt, sellTokens);
+              const q1 = await this.r.venues.bestExactInput(fromRep.token, this.chain.d.usdg, sellTokens);
               if (!q1) break;
-              const q2 = await this.r.venues.bestExactInput(this.chain.d.usdt, toRep.token, q1.amountOut);
+              const q2 = await this.r.venues.bestExactInput(this.chain.d.usdg, toRep.token, q1.amountOut);
               if (!q2) break;
               const sharesOut = sharesForTokens(sellTokens, fromRep.ratio);
               const sharesIn = sharesForTokens(q2.amountOut, toRep.ratio);
@@ -784,8 +728,8 @@ export class Baskets {
                 if ((toPlatformAfter * 10_000n) / totalAfter > BigInt(c.maxIssuerBps)) continue;
               }
               const legs = [
-                this.r.venues.exactInputLeg(q1, fromRep.token, this.chain.d.usdt, applySlippage(q1.amountOut, 50), basket),
-                this.r.venues.exactInputLeg(q2, this.chain.d.usdt, toRep.token, applySlippage(q2.amountOut, 50), basket),
+                this.r.venues.exactInputLeg(q1, fromRep.token, this.chain.d.usdg, applySlippage(q1.amountOut, 50), basket),
+                this.r.venues.exactInputLeg(q2, this.chain.d.usdg, toRep.token, applySlippage(q2.amountOut, 50), basket),
               ];
               const minShareGain = applySlippage(gain, 5_000); // accept half the expected gain as the hard floor
               // the constituent's issuer split before and after this move, so the record can be read as a weight change
@@ -799,7 +743,7 @@ export class Baskets {
                 heldSharesBefore: c.heldShares.toString(), heldSharesAfter: (c.heldShares + gain).toString(), split,
                 sellTokens: sellTokens.toString(), sharesOut: sharesOut.toString(), sharesIn: sharesIn.toString(), gain: gain.toString(), gainBps: Number(gainBps),
                 minShareGain: minShareGain.toString(), legs: serializeLegs(legs), timestamp: Math.floor(Date.now() / 1000), chainId: this.chain.cfg.CHAIN_ID,
-                why: `sell ${formatWad(sellTokens, 4)} ${fromRep.symbol} → ${formatWad(q1.amountOut, 2)} USDT → ${formatWad(q2.amountOut, 4)} ${toRep.symbol}: +${formatWad(gain, 6)} shares (+${gainBps} bps)`,
+                why: `sell ${formatWad(sellTokens, 4)} ${fromRep.symbol} → ${formatUsdg(q1.amountOut, 2)} USDG → ${formatWad(q2.amountOut, 4)} ${toRep.symbol}: +${formatWad(gain, 6)} shares (+${gainBps} bps)`,
               };
               const quoteHash = quoteHashOf(record);
               const data = encodeFunctionData({ abi: BasketVaultAbi, functionName: "migrate", args: [c.underlyingId, legs, minShareGain, quoteHash] });

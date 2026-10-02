@@ -1,13 +1,11 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { z } from "zod";
-import { createPublicClient, http, isAddress } from "viem";
-import { bsc } from "viem/chains";
-import { PolicySchema, formatWad } from "@parallax-hood/sdk";
+import { isAddress } from "viem";
+import { PolicySchema, NETWORK_LABEL, ROBINHOOD_ADDRESSES, formatWad, formatUsdg } from "@parallax-hood/sdk";
 import type { Config } from "./config.js";
 import { Chain } from "./chain.js";
 import { Db } from "./db.js";
-import { BinanceProvider } from "./providers/binance.js";
 import { Resolver } from "./resolve.js";
 import { Baskets } from "./baskets.js";
 import { PriceHistory } from "./history.js";
@@ -17,26 +15,29 @@ import { logger } from "./log.js";
 
 const log = logger("http");
 
-/** What the hybrid demo is doing, spelled out for every client: prices from mainnet, execution here. */
+/** What a hybrid network is doing, spelled out for every client: prices from mainnet, execution here on mocks. */
 export function hybridLabel(cfg: Config) {
-  return cfg.hybrid ? { markets: "BSC mainnet (Binance RWA catalogue, Chainlink)", execution: `${cfg.chain.name} (mock issuer tokens, prices mirrored by the keeper)` } : null;
+  return cfg.hybrid ? { markets: "Robinhood Chain mainnet (Chainlink feeds, Uniswap v3 pool depth)", execution: `${cfg.chain.name} (mock stock tokens, mock USDG and a mock venue priced from mainnet at deploy time)` } : null;
 }
 
-export type Services = { cfg: Config; chain: Chain; db: Db; binance: BinanceProvider; resolver: Resolver; baskets: Baskets; indexer: Indexer; history: PriceHistory };
+/** Which network this is and what on it is a stand-in. Sent with every listing so no screen has to guess. */
+export function networkLabel(cfg: Config, chain: Chain) {
+  const mocked = chain.isMocks ? ["stock tokens", "USDG", "swap venue", ...(cfg.hybrid ? [] : ["reference prices"])] : [];
+  return { ...NETWORK_LABEL[cfg.network], chainId: cfg.CHAIN_ID, explorer: cfg.chain.blockExplorers?.default.url ?? null, mocked };
+}
+
+export type Services = { cfg: Config; chain: Chain; db: Db; resolver: Resolver; baskets: Baskets; indexer: Indexer; history: PriceHistory };
 
 export function createServices(cfg: Config, dbPath = cfg.dbPath): Services {
   const chain = new Chain(cfg);
   const db = new Db(dbPath);
-  const binance = new BinanceProvider(cfg);
-  binance.alias = (t) => chain.twin(t); // hybrid: catalogue lookups for a mock go to its mainnet twin
-  const resolver = new Resolver(chain, binance, db);
+  const resolver = new Resolver(chain, db);
   // Chainlink history is mainnet history: the fork reads it directly instead of forwarding every round through anvil.
-  // Mocks and testnet price mock tokens, so they have none.
-  const historyClient = cfg.network === "bsc" ? chain.client : createPublicClient({ chain: bsc, transport: http(cfg.BSC_RPC_URL) });
-  const history = new PriceHistory(historyClient, cfg.network === "bsc" || cfg.network === "fork" || cfg.hybrid, db);
+  // A mock network that is not twinned with mainnet prices mock tokens, so it has none.
+  const history = new PriceHistory(chain.mainnet, cfg.network === "robinhood" || cfg.network === "fork" || cfg.hybrid, (t) => chain.catalogue.feed(t), db);
   const baskets = new Baskets(chain, resolver, history);
   const indexer = new Indexer(chain, db, cfg.INDEXER_FROM_BLOCK, cfg.INDEXER_POLL_MS);
-  return { cfg, chain, db, binance, resolver, baskets, indexer, history };
+  return { cfg, chain, db, resolver, baskets, indexer, history };
 }
 
 const ResolveBody = z.object({
@@ -49,7 +50,7 @@ const ResolveBody = z.object({
   wallet: z.string().optional(),
   recipient: z.string().optional(),
 });
-const MintBody = z.object({ units: z.string().optional(), usdAmount: z.string().optional(), budgetUsdt: z.string().optional(), policy: PolicySchema.partial().optional(), wallet: z.string().optional(), recipient: z.string().optional() });
+const MintBody = z.object({ units: z.string().optional(), usdAmount: z.string().optional(), budgetUsdg: z.string().optional(), policy: PolicySchema.partial().optional(), wallet: z.string().optional(), recipient: z.string().optional() });
 const RedeemBody = z.object({ units: z.string(), inKind: z.boolean().default(false), policy: PolicySchema.partial().optional(), wallet: z.string().optional(), recipient: z.string().optional() });
 
 const json = (v: unknown) => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x)));
@@ -62,19 +63,20 @@ export function createApp(s: Services) {
     return c.json({ error: err.message }, 400);
   });
 
-  app.get("/", (c) => c.json({ name: "parallax-resolver", chainId: s.cfg.CHAIN_ID, network: s.cfg.network, dataSource: s.resolver.dataSource }));
+  const hasFaucet = s.cfg.network === "fork" || s.cfg.network === "mocks" || (s.cfg.network === "robinhoodTestnet" && Boolean(s.cfg.FAUCET_PRIVATE_KEY));
+  app.get("/", (c) => c.json({ name: "parallax-resolver", chainId: s.cfg.CHAIN_ID, network: s.cfg.network, label: networkLabel(s.cfg, s.chain), dataSource: s.resolver.dataSource }));
   app.get("/health", async (c) => {
     const block = await s.chain.client.getBlockNumber().catch(() => null);
-    return c.json({ ok: block !== null, block: block?.toString() ?? null, chainId: s.cfg.CHAIN_ID, quoteOnly: s.cfg.quoteOnly, hybrid: hybridLabel(s.cfg), faucet: s.cfg.network === "fork" || s.cfg.network === "mocks" || (s.cfg.network === "bscTestnet" && Boolean(s.cfg.FAUCET_PRIVATE_KEY)), binance: { mode: s.binance.mode, available: s.binance.available }, deployment: json(s.chain.d) });
+    return c.json({ ok: block !== null, block: block?.toString() ?? null, chainId: s.cfg.CHAIN_ID, label: networkLabel(s.cfg, s.chain), quoteOnly: s.cfg.quoteOnly, hybrid: hybridLabel(s.cfg), faucet: hasFaucet, universe: { file: s.chain.catalogue.available, stocks: s.chain.catalogue.universe.representations.length }, deployment: json(s.chain.d) });
   });
-  app.get("/config", (c) => c.json({ chainId: s.cfg.CHAIN_ID, network: s.cfg.network, deployment: json(s.chain.d), dataSource: s.resolver.dataSource, binanceMode: s.binance.mode }));
+  app.get("/config", (c) => c.json({ chainId: s.cfg.CHAIN_ID, network: s.cfg.network, label: networkLabel(s.cfg, s.chain), deployment: json(s.chain.d), dataSource: s.resolver.dataSource }));
 
   app.get("/stocks", async (c) => c.json(json({ ...(await s.resolver.stocks(c.req.query("query"))), hybrid: hybridLabel(s.cfg) })));
   app.get("/stocks/:ticker", async (c) => {
     const all = await s.resolver.stocks(c.req.param("ticker"));
     const hit = all.stocks.find((x) => x.ticker === c.req.param("ticker").toUpperCase());
     if (!hit) return c.json({ error: "unknown ticker" }, 404);
-    return c.json(json({ ...hit, dataSource: all.dataSource, binance: all.binance }));
+    return c.json(json({ ...hit, dataSource: all.dataSource }));
   });
 
   app.post("/resolve", async (c) => {
@@ -91,8 +93,8 @@ export function createApp(s: Services) {
     return c.json(json({ dataSource: s.resolver.dataSource, quoteOnly: s.cfg.quoteOnly, hybrid: hybridLabel(s.cfg), asOf: Math.floor(snap.at / 1000), baskets: snap.cards }));
   });
   /**
-   * A price history for one stock. Chainlink rounds where BSC has a feed, the underlying's daily closes
-   * otherwise, so every name has a chart and not only the Magnificent 7. `source` says which one answered, and
+   * A price history for one stock. Chainlink rounds where the stock has a feed, the underlying's daily closes
+   * otherwise. `source` says which one answered, and
    * a ticker no source reaches returns an empty series rather than a line drawn from nothing.
    */
   app.get("/stocks/:ticker/history", async (c) => {
@@ -139,11 +141,14 @@ export function createApp(s: Services) {
     return c.json({ receipts: rows, quotes: Object.fromEntries(rows.map((r) => [r.quote_hash, s.db.getQuote(String(r.quote_hash)) ? JSON.parse(s.db.getQuote(String(r.quote_hash))!.json) : null])) });
   });
 
-  // test funds on chains we own (fork of mainnet / local mocks / BSC testnet with a faucet key); absent on mainnet
-  if (s.cfg.network === "fork" || s.cfg.network === "mocks" || (s.cfg.network === "bscTestnet" && s.cfg.FAUCET_PRIVATE_KEY)) {
+  // test funds on chains we own (a fork of mainnet, local mocks, the testnet with a faucet key); absent on mainnet
+  if (hasFaucet) {
     app.post("/faucet", async (c) => {
       const body = z.object({ address: z.string() }).parse(await c.req.json());
-      const r = await faucet(s.chain, body.address, s.db);
+      // on a fork the grant is moved out of the deepest USDG pool, the one holder certain to exist there
+      const pools = s.cfg.network === "fork" ? await s.resolver.venues.uniswap?.pools(ROBINHOOD_ADDRESSES.usdg, ROBINHOOD_ADDRESSES.weth).catch(() => []) : [];
+      const source = [...(pools ?? [])].sort((a, b) => ((b.balances[ROBINHOOD_ADDRESSES.usdg.toLowerCase()] ?? 0n) > (a.balances[ROBINHOOD_ADDRESSES.usdg.toLowerCase()] ?? 0n) ? 1 : -1))[0]?.pool;
+      const r = await faucet(s.chain, body.address, s.db, source);
       s.chain.invalidate();
       return c.json(r);
     });
@@ -159,7 +164,7 @@ export function createApp(s: Services) {
     const a = c.req.param("address");
     if (!isAddress(a)) return c.json({ error: "bad address" }, 400);
     const all = await s.chain.allUnderlyings();
-    const brands = await s.binance.brands().catch(() => new Map<string, { name?: string; logoUrl?: string }>());
+    const brands = s.chain.catalogue.brands();
     const holdings = [];
     let stocksUsd = 0;
     let unpriced = 0;
@@ -198,12 +203,12 @@ export function createApp(s: Services) {
         constituents: summary?.constituents.map((x) => x.ticker) ?? [],
       });
     }
-    const usdt = await s.chain.balanceOf(s.chain.d.usdt, a);
-    const usdtUsd = Number(formatWad(usdt, 18));
+    const usdg = await s.chain.balanceOf(s.chain.d.usdg, a);
+    const usdgUsd = Number(formatUsdg(usdg));
     return c.json({
-      address: a, usdt: usdt.toString(), holdings, baskets,
+      address: a, usdg: usdg.toString(), holdings, baskets,
       totals: {
-        indicesUsd: indicesUsd.toFixed(2), stocksUsd: stocksUsd.toFixed(2), usdtUsd: usdtUsd.toFixed(2),
+        indicesUsd: indicesUsd.toFixed(2), stocksUsd: stocksUsd.toFixed(2), usdgUsd: usdgUsd.toFixed(2),
         portfolioUsd: (indicesUsd + stocksUsd).toFixed(2), unpricedPositions: unpriced,
       },
     });

@@ -17,7 +17,7 @@ if (cfg.network === "fork") {
  * the memos are filled. Doing it at boot means the first visitor gets the warm path, and repeating it keeps
  * the shelf warm rather than letting it expire into another cold request.
  */
-if (!cfg.quoteOnly || cfg.CHAIN_ID === 56) {
+if (!cfg.quoteOnly || cfg.CHAIN_ID === 4663) {
   const warm = () =>
     services.baskets.refreshCards();
   void warm();
@@ -26,5 +26,5 @@ if (!cfg.quoteOnly || cfg.CHAIN_ID === 56) {
 
 const app = createApp(services);
 serve({ fetch: app.fetch, port: cfg.PORT }, (info) => {
-  log.info("resolver listening", { port: info.port, chainId: cfg.CHAIN_ID, network: cfg.network, rpc: cfg.rpcUrl, binance: services.binance.mode });
+  log.info("resolver listening", { port: info.port, chainId: cfg.CHAIN_ID, network: cfg.network, rpc: cfg.rpcUrl, universe: services.chain.catalogue.universe.representations.length });
 });

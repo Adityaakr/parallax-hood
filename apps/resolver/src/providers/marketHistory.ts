@@ -6,7 +6,7 @@ const DAY = 86_400;
 
 /**
  * Daily closing prices for the underlying stock itself, from Yahoo Finance's public chart endpoint (no key, two
- * years of daily bars). Chainlink publishes BSC feeds for the Mag 7 only, and a PancakeSwap pool's oracle keeps
+ * years of daily bars). Chainlink publishes BSC feeds for the Mag 7 only, and a Uniswap pool's oracle keeps
  * days rather than months, so this is the only source that reaches back a year for names like Robinhood or
  * CoreWeave. It is display-only: returns and NAV read from it, nothing that executes or settles ever does.
  *
