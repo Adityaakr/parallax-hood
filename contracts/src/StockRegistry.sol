@@ -59,6 +59,8 @@ contract StockRegistry is AccessControl, IStockRegistry {
     /// @notice Set when the feed prices a *token* rather than a share. Robinhood Chain's stock feeds already
     ///         include the ERC-8056 multiplier, so the share price is the answer divided by that token's ratio.
     mapping(bytes32 => address) public priceFeedToken;
+    /// @inheritdoc IStockRegistry
+    mapping(address => uint256) public override supplyCapOf;
 
     event UnderlyingSet(bytes32 indexed id, string ticker, bool active);
     event RepresentationSet(
@@ -77,6 +79,7 @@ contract StockRegistry is AccessControl, IStockRegistry {
     event PriceFeedSet(bytes32 indexed underlyingId, address indexed feed);
     event PriceFeedTokenSet(bytes32 indexed underlyingId, address indexed token);
     event PriceLimitsSet(uint64 maxPriceAge, uint16 maxPriceStepBps);
+    event SupplyCapSet(address indexed basket, uint256 capUnits);
 
     error UnknownUnderlying(bytes32 id);
     error UnknownRepresentation(address token);
@@ -198,6 +201,14 @@ contract StockRegistry is AccessControl, IStockRegistry {
         if (feed == address(0)) revert ZeroAddress();
         if (!_reps[token].exists || _reps[token].underlyingId != underlyingId) revert UnknownRepresentation(token);
         _setPriceFeed(underlyingId, feed, token);
+    }
+
+    /// @notice Cap the units a basket may have outstanding (0 lifts the cap). A launch guard: it bounds how much
+    ///         can be at risk in an unaudited vault. Lowering it below the current supply only stops new mints.
+    function setSupplyCap(address basket, uint256 capUnits) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (basket == address(0)) revert ZeroAddress();
+        supplyCapOf[basket] = capUnits;
+        emit SupplyCapSet(basket, capUnits);
     }
 
     /// @notice ADMIN override for a ratio outside the step bound (corporate action: split, reverse split).

@@ -65,6 +65,7 @@ contract BasketVault is ERC20, ReentrancyGuard, IBasketVault, ReceiptEmitter {
     error BackingViolated(bytes32 underlyingId, uint256 held, uint256 required);
     error IssuerCapExceeded(bytes32 underlyingId, bytes32 platformId, uint256 platformShares, uint256 held);
     error OverSpent(uint256 spent, uint256 maxUsdgIn);
+    error SupplyCapExceeded(uint256 supplyAfter, uint256 cap);
     error InsufficientUsdgOut(uint256 usdgOut, uint256 minUsdgOut);
     error InsufficientShareGain(uint256 gain, uint256 minShareGain);
     error ConstituentDecreased(bytes32 underlyingId, uint256 before, uint256 after_);
@@ -109,6 +110,8 @@ contract BasketVault is ERC20, ReentrancyGuard, IBasketVault, ReceiptEmitter {
         if (units == 0 || maxUsdgIn == 0) revert ZeroAmount();
         if (recipient == address(0)) revert ZeroAddress();
         if (legs.length == 0) revert NoLegs();
+        uint256 cap = registry.supplyCapOf(address(this));
+        if (cap != 0 && totalSupply() + units > cap) revert SupplyCapExceeded(totalSupply() + units, cap);
 
         usdg.safeTransferFrom(msg.sender, address(this), maxUsdgIn);
         uint256 usdgBefore = usdg.balanceOf(address(this));

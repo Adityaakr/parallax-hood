@@ -65,4 +65,7 @@ interface IStockRegistry {
     function maxPriceAge() external view returns (uint64);
     /// @notice Protocol fee on USDG notional (bps, hard-capped at MAX_FEE_BPS) and where it is paid.
     function fee() external view returns (uint16 bps, address recipient);
+    /// @notice Most units a basket may have outstanding; 0 means no cap. Read by BasketVault.mint only: a cap
+    ///         can stop new units being minted, never a holder redeeming.
+    function supplyCapOf(address basket) external view returns (uint256);
 }

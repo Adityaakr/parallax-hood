@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {BaseTest} from "../Base.t.sol";
 import {BasketVault} from "../../src/BasketVault.sol";
+import {StockRegistry} from "../../src/StockRegistry.sol";
 import {BasketFactory} from "../../src/BasketFactory.sol";
 import {IBasketVault} from "../../src/interfaces/IBasketVault.sol";
 import {LegExecutor} from "../../src/libraries/LegExecutor.sol";
@@ -72,6 +73,46 @@ contract BasketVaultTest is BaseTest {
         // fair cost ~ 10*(0.1*219 + 0.05*332) = 385 USDG
         assertApproxEqRel(spent, 385e6, 0.01e18);
         assertEq(usdg.balanceOf(address(basket)), 0);
+    }
+
+    // ---------------- supply cap ----------------
+
+    function test_supplyCap_boundsMintsOnly() public {
+        vm.expectRevert();
+        registry.setSupplyCap(address(basket), 3e18); // admin only
+        vm.startPrank(admin);
+        vm.expectRevert(StockRegistry.ZeroAddress.selector);
+        registry.setSupplyCap(address(0), 3e18);
+        registry.setSupplyCap(address(basket), 3e18);
+        vm.stopPrank();
+
+        _mintBasket(alice, 2e18);
+        _mintBasket(bob, 1e18); // exactly at the cap
+
+        (LegExecutor.Leg[] memory legs, uint256 maxUsdg) = _mintLegs(1);
+        vm.startPrank(alice);
+        usdg.approve(address(basket), maxUsdg);
+        vm.expectRevert(abi.encodeWithSelector(BasketVault.SupplyCapExceeded.selector, 3e18 + 1, 3e18));
+        basket.mint(1, maxUsdg, legs, alice, QH);
+        vm.stopPrank();
+
+        // a cap lowered under the supply stops new units; it never stands between a holder and their assets
+        vm.prank(admin);
+        registry.setSupplyCap(address(basket), 1e18);
+        vm.prank(bob);
+        basket.redeemInKind(1e18, bob);
+        assertEq(basket.totalSupply(), 2e18);
+        assertTrue(basket.backingOk());
+
+        // redeeming made no room under the lowered cap, and lifting it reopens mints
+        vm.startPrank(alice);
+        vm.expectRevert(abi.encodeWithSelector(BasketVault.SupplyCapExceeded.selector, 2e18 + 1, 1e18));
+        basket.mint(1, maxUsdg, legs, alice, QH);
+        vm.stopPrank();
+        vm.prank(admin);
+        registry.setSupplyCap(address(basket), 0);
+        _mintBasket(alice, 1e18);
+        assertEq(basket.totalSupply(), 3e18);
     }
 
     function test_mint_refundsLeftover() public {
