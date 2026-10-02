@@ -7,11 +7,13 @@
     "gen-universe": "tsx gen-universe.mts",
     "e2e:index-mint": "tsx e2e/index-mint.mts",
     "capture": "node --no-warnings capture.ts",
-    "e2e:browser": "tsx e2e/browser.mts"
+    "e2e:browser": "tsx e2e/browser.mts",
+    "e2e:flow": "tsx e2e/flow.mts"
   },
   "dependencies": {
     "@parallax-hood/sdk": "workspace:*",
-    "viem": "^2.21.0"
+    "viem": "^2.21.0",
+    "@modelcontextprotocol/sdk": "^1.12.0"
   },
   "devDependencies": {
     "playwright": "^1.63.0",
