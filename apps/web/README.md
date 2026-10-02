@@ -3,28 +3,25 @@
 `apps/web` is Parallax's site and app in Next.js 15 (App Router), TypeScript, Tailwind CSS v4 and Motion.
 Its design system is a measured reconstruction of the Syncrun template (https://syncrun.framer.website,
 Framer project `cdyA3db0MrYAtjey4Sey`): every token, frame and motion value was read from the live reference
-with Playwright (recon in `../../.recon/`), and the sections keep the reference's structure exactly. The
+with Playwright, and the sections keep the reference's structure exactly. The
 content is Parallax's own (`content/*.ts`; the reference copy is kept in `content/syncrun/` for comparison)
 and every figure on it traces to `docs/addresses.md` or `contracts/script/config/robinhood.json`.
 
 ## Run
 
 ```
-pnpm --filter @parallax-hood/web dev        # http://localhost:3100
+pnpm --filter @parallax-hood/web dev        # http://localhost:3200
 NEXT_DIST_DIR=.next-prod pnpm --filter @parallax-hood/web build && NEXT_DIST_DIR=.next-prod npx next start -p 3200
 ```
 
 `NEXT_DIST_DIR` keeps production builds out of the dev server's `.next`.
 
-## Recon tooling (`../../scripts`)
+## Recon tooling
 
-| script | what it does |
-|---|---|
-| `capture.ts` | crawls a site, saves HTML, full-page + per-section screenshots at 1440/768/390, `getComputedStyle` of every visible element, and every asset. `BASE=` picks the site, `ROUTES=` limits it, `RECON_DIR=` the output. Run it against the reference and against the build and diff. |
-| `extract-copy.ts` | walks every page and writes text, links and images per section to `.recon/copy/*.json` |
-| `motion-compare.mjs` | entrance frames at fixed timestamps and measured marquee speeds, reference vs build |
-| `shot.mjs` | one element, clip or state (`footer`, `nav-scrolled`, `menu`, `y=N`) of either site |
-| `shot-full.mjs` | full-page screenshot of a build route after the appear animations have run; `CHAIN=31337` picks the product network |
+`../../scripts/capture.ts` crawls a site and saves HTML, full-page and per-section screenshots at 1440/768/390,
+the computed style of every visible element and every asset (`BASE=` picks the site, `ROUTES=` limits it,
+`RECON_DIR=` the output). The reference captures it was run against, and the one-off comparison scripts, stay in
+the original Parallax repository; they are not needed to build or run this app.
 
 ## Token system (`app/globals.css`)
 
@@ -82,6 +79,7 @@ frame it reproduces. Copy lives in `content/*.ts` (Parallax); the reference's ve
 
 ## QA
 
-`.recon/DEVIATIONS.md` lists every known difference from the reference, `.recon/NOTES.md` the things in the
-reference reproduced as-is that a reviewer may want to rule on. Lighthouse (mobile, production): performance
-84–91, accessibility 96–100, best practices 100, CLS 0.
+The reference captures, the list of known deviations and the Lighthouse runs belong to the original build and
+are kept in the original Parallax repository. For this port the checks are the typecheck, the production build
+and the browser journey in `../../scripts/e2e/browser.mts`.
+
