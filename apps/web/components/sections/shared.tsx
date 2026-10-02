@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Reveal, Tag, Button, Icon, LogoRail } from "@/components/site/ui";
-import { FAQS, PLANS, LOGOS } from "@/content/site";
+import { FAQS, PLANS, LOGOS, type StocksCard } from "@/content/site";
 import type { Post } from "@/content/blog";
 import type { BasketCard, BasketPerformance, Period } from "@/lib/api";
 import { DEFAULT_CHAIN, resolverUrlOrNull } from "@/lib/config";
@@ -58,9 +58,10 @@ export function FaqsSection({ on = 8, centered = false, text = FAQS.text, tag = 
 
 /** Plans: Monthly / Yearly tab then three cards; `logos` appends the trusted-clients rail (home only). */
 /**
- * Indices, in the Plans frame: the three curated indices as index cards (constituent marks, thesis, return over
- * the chosen period, minimum, NAV). Figures come from the resolver on the default network; when it is not
- * reachable the cards keep the definitions and say the figures are unavailable rather than showing stale ones.
+ * Indices, in the Plans frame's three slots: the two indices as index cards (constituent marks, thesis, return
+ * over the chosen period, minimum, NAV) and the single-stock path in the third. Index figures come from the
+ * resolver on the default network; when it is not reachable the cards keep the definitions and say the figures
+ * are unavailable rather than showing stale ones. The third card's figures are fixed facts from content/site.ts.
  */
 export function PlansSection({ on = 7, logos = false }: { on?: number; logos?: boolean }) {
   const [period, setPeriod] = useState<Period>("y1");
@@ -95,14 +96,16 @@ export function PlansSection({ on = 7, logos = false }: { on?: number; logos?: b
           <div className="shell w-full">
             <div className="grid gap-[7px] lg:grid-cols-3">
               {PLANS.cards.map((c) => {
+                if (c.kind === "stocks") return <StocksPlanCard key={c.name} c={c} />;
                 const b = live?.[c.symbol];
                 const ret = b?.performance.returns[period];
-                const marks = b?.allocation ?? c.tickers.map((t) => ({ ticker: t, logoUrl: null }));
+                // lettered marks only: the marketing site shows no issuer or company logos
+                const marks = c.tickers.map((t) => ({ ticker: t, logoUrl: null }));
                 return (
                   <Link key={c.symbol} href={`/baskets/${c.symbol}`} className="icard">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3"><TokenMark symbol={c.symbol} size={28} /><span aria-hidden className="w-px self-stretch my-1" style={{ background: "var(--line-2)" }} /><LogoCluster items={marks} /></div>
-                      <span className="ichip">{b ? (b.deployed ? "live" : "not deployed yet") : live === undefined ? "loading" : "offline"}</span>
+                      <span className="ichip">{b ? (b.deployed ? "deployed" : "not deployed yet") : live === undefined ? "loading" : "offline"}</span>
                     </div>
                     <div className="flex flex-col gap-[8px]">
                       <div className="flex items-baseline gap-3"><span className="t-h5">{c.name}</span><span className="isym">{c.symbol}</span></div>
@@ -129,11 +132,34 @@ export function PlansSection({ on = 7, logos = false }: { on?: number; logos?: b
   );
 }
 
+/** The Plans frame's third slot: the single-stock path, in the same card shape, with fixed facts for figures. */
+function StocksPlanCard({ c }: { c: StocksCard }) {
+  return (
+    <Link href={c.href} className="icard">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3"><LogoCluster items={c.tickers.map((t) => ({ ticker: t, logoUrl: null }))} /></div>
+        <span className="ichip">{c.chip}</span>
+      </div>
+      <div className="flex flex-col gap-[8px]">
+        <div className="flex items-baseline gap-3"><span className="t-h5">{c.name}</span><span className="isym">{c.label}</span></div>
+        <p className="t-main-soft">{c.thesis}</p>
+      </div>
+      <div className="ifigs">
+        {c.figs.map(([label, value]) => <div key={label}><div className="t-small ilabel">{label}</div><div className="ivalue">{value}</div></div>)}
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <span className="inote">{c.note}</span>
+        <span className="igo">{c.go}<Icon name="arrow-up-right" size={14} alt="" /></span>
+      </div>
+    </Link>
+  );
+}
+
 /** The coverage sentence the product cards use, as plain text. */
 function coverageText(perf: BasketPerformance) {
-  if (perf.coverageBps >= 10_000) return "Price return from Chainlink rounds on BSC, dividends excluded.";
-  if (perf.covered === 0) return `No return history yet: none of the ${perf.total} constituents has a Chainlink feed on BSC.`;
-  return `Covers ${(perf.coverageBps / 100).toFixed(0)}% of NAV: ${perf.covered} of ${perf.total} constituents have a Chainlink feed on BSC.`;
+  if (perf.coverageBps >= 10_000) return "Price return from Chainlink rounds, dividends excluded.";
+  if (perf.covered === 0) return `No return history on this network: none of the ${perf.total} constituents has a Chainlink feed here.`;
+  return `Covers ${(perf.coverageBps / 100).toFixed(0)}% of NAV: ${perf.covered} of ${perf.total} constituents have a Chainlink feed on this network.`;
 }
 
 export function PostCard({ post, base = "/blog/" }: { post: Post; base?: string }) {

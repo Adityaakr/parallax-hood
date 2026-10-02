@@ -9,7 +9,7 @@ import Image from "next/image";
 import { HOME } from "@/content/home";
 import { BACKGROUND_IMAGE } from "@/content/site";
 import { Reveal, Tag, Feat } from "@/components/site/ui";
-import { ResolveFrame, RouterFrame, ReceiptFrame } from "@/components/app/frames";
+import { BasketFrame, MandateFrame, ReceiptFrame } from "@/components/app/frames";
 
 export function Features() {
   const f = HOME.features;
@@ -30,8 +30,8 @@ export function Features() {
               <div className="visual">
                 <Image className="photo" src={BACKGROUND_IMAGE} alt="" fill sizes="603px" />
                 <div className="mock overflow-hidden w-full" style={{ maxWidth: 520 }}>
-                  {c.visual === "resolve" && <ResolveFrame compact venue />}
-                  {c.visual === "router" && <RouterFrame />}
+                  {c.visual === "basket" && <BasketFrame rows={4} />}
+                  {c.visual === "mandate" && <MandateFrame />}
                   {c.visual === "receipt" && <ReceiptFrame />}
                 </div>
               </div>

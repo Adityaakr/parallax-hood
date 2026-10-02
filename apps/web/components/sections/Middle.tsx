@@ -52,7 +52,7 @@ function Calculator() {
   const [usd, setUsd] = useState(c.defaultTasks);
   const [bps, setBps] = useState(c.defaultLevel);
   const perOrder = (usd * bps) / 10_000;
-  // the bars: what the same spread costs at seven order sizes, so nothing on the chart is invented
+  // the bars: the same fee rate applied to seven order sizes, so nothing on the chart is invented
   const sizes = useMemo(() => [1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000], []);
   const bars = sizes.map((n) => (n * bps) / 10_000);
   const max = Math.max(...bars, 1);
@@ -64,8 +64,8 @@ function Calculator() {
         <div className="t-h3b">${usd.toLocaleString("en-US")}</div>
         <input type="range" min={1000} max={250_000} step={1000} value={usd} onChange={(e) => setUsd(Number(e.target.value))} aria-label={c.label1} />
         <label>{c.label2}</label>
-        <div className="t-h3b">{bps} bps</div>
-        <input type="range" min={1} max={120} step={1} value={bps} onChange={(e) => setBps(Number(e.target.value))} aria-label={c.label2} />
+        <div className="t-h3b">{(bps / 100).toFixed(2)} %</div>
+        <input type="range" min={1} max={c.maxLevel} step={1} value={bps} onChange={(e) => setBps(Number(e.target.value))} aria-label={c.label2} />
         <div className="flex items-center justify-between"><label>{c.tasksLabel}</label><span style={{ fontSize: 11, fontWeight: 700 }}>${perOrder.toLocaleString("en-US", { maximumFractionDigits: 0 })} {c.perMonth}</span></div>
         <div className="bars mt-[30px]">{bars.map((b, i) => <div key={i}><b style={{ height: `${8 + (b / max) * 42}px` }} /><span>{sizes[i]! >= 1000 ? `${sizes[i]! / 1000}k` : sizes[i]}</span></div>)}</div>
         <div className="rule mt-[20px] mb-[6px]" />

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { CONTACT } from "@/content/pages";
+import { REPO } from "@/content/site";
 import { Button } from "@/components/site/ui";
 
 export function ContactForm() {
@@ -12,7 +13,7 @@ export function ContactForm() {
     e.preventDefault();
     const title = encodeURIComponent(`Question from ${v.Name || "the site"}`);
     const body = encodeURIComponent(`${v.Message || ""}\n\n-- ${v.Name || ""} ${v.Email ? `<${v.Email}>` : ""}`);
-    window.open(`https://github.com/Adityaakr/parallax/issues/new?title=${title}&body=${body}`, "_blank", "noreferrer");
+    window.open(`${REPO}/issues/new?title=${title}&body=${body}`, "_blank", "noreferrer");
   };
   return (
     <form className="panel" onSubmit={submit}>

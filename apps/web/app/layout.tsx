@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Parallax: one stock, many tokens, one true position",
-  description: "Share-denominated routing, invariant-protected baskets and onchain agent mandates for tokenized stocks on BNB Chain.",
+  title: "Parallax on Robinhood Chain",
+  description: "A token is not a share. Parallax measures Robinhood stock tokens in underlying shares: USDG index vaults, agent mandates enforced on chain, and execution priced per share. Runs on Robinhood Chain Testnet; mainnet deployment is pending. Unaudited. Not available to U.S. persons.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

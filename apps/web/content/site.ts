@@ -1,13 +1,19 @@
 /*
- * Site-wide content for Parallax. The layout, motion and every measurement stay the Syncrun
- * reconstruction's (see content/syncrun for the reference copy); only the words, links and imagery are
- * ours. Every figure traces to docs/recon.md, docs/decisions.md, contracts/script/config/bsc.json or a
- * recorded run named beside it.
+ * Site-wide content for Parallax on Robinhood Chain. The layout, motion and every measurement stay the Syncrun
+ * reconstruction's (see content/syncrun for the reference copy); only the words and links are ours. Every
+ * figure traces to docs/addresses.md or contracts/script/config/robinhood.json. There are no usage, volume or
+ * performance figures here because there are none to report: nothing is deployed on mainnet yet.
  */
 
+export const REPO = "https://github.com/Adityaakr/parallax-hood";
+const DOC = (file: string) => `${REPO}/blob/main/docs/${file}`;
+export const DOCS = { addresses: DOC("addresses.md"), invariants: DOC("invariants.md"), threatModel: DOC("threat-model.md") };
+
+export const NOT_AFFILIATED = "Parallax is an independent project and is not affiliated with or endorsed by Robinhood, Paxos, Chainlink or Uniswap.";
+
 export const META = {
-  title: "Parallax - one stock, many tokens, one true position",
-  description: "Best execution and index layer for tokenized stocks on BNB Chain: Parallax quotes every issuer's token of a stock in underlying shares, fills at the cheapest, and packages themes into indices you can invest in with one click, hold, or delegate to an agent.",
+  title: "Parallax on Robinhood Chain",
+  description: "A token is not a share. Parallax measures Robinhood stock tokens in underlying shares: USDG index vaults, agent mandates enforced on chain, and execution priced per share. It runs on Robinhood Chain Testnet and against a fork of mainnet; mainnet deployment is pending. Unaudited. Not available to U.S. persons.",
 };
 
 export const NAV = {
@@ -24,68 +30,73 @@ export const NAV = {
 
 /** The footer's CTA repeats the home hero on every page. */
 export const CTA = {
-  title: "Fill every share at its best representation.",
-  text: "Invest in an index in one click, search a single stock, or hand an agent a mandate it cannot break. On BNB Chain, in underlying shares.",
-  primary: { label: "Invest in an index", href: "/baskets" },
+  title: "Count the position in shares.",
+  text: "Mint an index with USDG, buy a single stock, or give an agent a mandate it cannot exceed. On Robinhood Chain Testnet today; mainnet deployment is pending.",
+  primary: { label: "View the indices", href: "/baskets" },
   secondary: { label: "Search a stock", href: "/stocks" },
 };
 
 export const FOOTER = {
-  newsletter: { title: "Follow the build", text: "Recorded runs, invariant changes and the mainnet deployment, as they land.", placeholder: "Your Email", button: "Send", inputName: "Email" },
+  /* there is no mailing list: the form opens the repository, and the copy says so */
+  newsletter: { title: "Follow the build", text: "There is no mailing list. This box opens the repository, where every change lands and where the mainnet deployment will be recorded when it happens.", placeholder: "Your Email", button: "Open", inputName: "Email" },
   columns: [
-    { title: "Product", links: [["Search a stock", "/stocks"], ["Indices", "/baskets"], ["Activity", "/receipts"], ["Agents", "/mandates"], ["How it works", "/about"], ["Changelog", "/changelog"]] },
-    { title: "Project", links: [["Notes", "/blog"], ["GitHub", "https://github.com/Adityaakr/parallax"], ["BNB Hack 2026", "https://www.bnbchain.org/en/hackathons/tokenized-stocks"]] },
-    { title: "Legal", links: [["Privacy policy", "/legals/privacy-policy"], ["Terms of service", "/legals/terms-of-service"], ["404 Page", "/404"]] },
+    { title: "Product", links: [["Search a stock", "/stocks"], ["Indices", "/baskets"], ["Portfolio", "/portfolio"], ["Activity", "/receipts"], ["Agents", "/mandates"], ["How it works", "/how-it-works"]] },
+    { title: "Project", links: [["Notes", "/blog"], ["Changelog", "/changelog"], ["GitHub", REPO], ["Addresses", DOCS.addresses], ["Invariants", DOCS.invariants], ["Threat model", DOCS.threatModel]] },
+    { title: "Legal", links: [["Eligibility", "/legals/terms-of-service#eligibility"], ["Terms of service", "/legals/terms-of-service"], ["Privacy policy", "/legals/privacy-policy"]] },
   ] as { title: string; links: [string, string][] }[],
+  /* the reference's bottom row, carrying the notices every page has to show */
+  bottom: {
+    notice: `Not available to U.S. persons. Unaudited software; not investment advice. ${NOT_AFFILIATED}`,
+    link: { label: "Eligibility", href: "/legals/terms-of-service#eligibility" },
+  },
 };
 
-/** The rails Parallax runs on. Logos we hold as files render as images; the rest render as wordmarks. */
+/**
+ * The rail that held customer logos in the reference. Parallax has no customers or partners to show, so it
+ * lists what the registry supports, as plain wordmarks: the seven stocks and the two indices.
+ */
 export const LOGOS = {
-  caption: "[ Built on BNB Chain ]",
-  items: [
-    { src: "/brand/badge-bnb.svg", w: 40, h: 40, label: "BNB Chain" },
-    { src: "/brand/ondo.png", w: 40, h: 40, label: "Ondo" },
-    { src: "/brand/bstocks.png", w: 40, h: 40, label: "bStocks" },
-    { src: "/brand/badge-pancake.svg", w: 40, h: 40, label: "PancakeSwap" },
-    { src: "", w: 0, h: 0, label: "Chainlink" },
-    { src: "", w: 0, h: 0, label: "Binance Web3" },
-    { src: "", w: 0, h: 0, label: "Uniswap v3" },
-  ] as { src: string; w: number; h: number; label: string }[],
+  caption: "[ Seven stocks, two indices ]",
+  items: ["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA", "pxMAG7", "pxAI"].map((label) => ({ src: "", w: 0, h: 0, label })) as { src: string; w: number; h: number; label: string }[],
 };
 
 export const FAQS = {
   tag: "FAQs",
   title: "Questions?",
-  text: "Everything asked before trusting a router with an order, including the ones with uncomfortable answers.",
-  cta: { title: "More questions?", text: "The repository has the rest.", button: { label: "Read the docs", href: "https://github.com/Adityaakr/parallax#readme" } },
+  text: "What to know before trusting a contract with an order, including the answers that are not flattering.",
+  cta: { title: "More questions?", text: "The repository has the rest.", button: { label: "Read the docs", href: `${REPO}#readme` } },
   items: [
-    { q: "Is this live?", a: "Yes, on BNB Smart Chain mainnet since 22 September 2026: StockRegistry 0x84Af7451794aaDFa729d6e8e140B51169a6cfe7D, ShareRouter 0xcfAa542E4Dac083E440644EDF6C54f8d78B0579C, BasketFactory, AgentMandate and the three index vaults, all listed in the README with their BscScan links. The registry holds the 19 stocks the indices need and their 36 Ondo and bStocks tokens, with Chainlink feeds wired for the Mag 7. BSC testnet runs the same contracts against mock issuer tokens whose prices are mirrored from mainnet, with a faucet, for anyone who wants to try a mint without spending." },
-    { q: "Why do two tokens of the same stock trade at different prices?", a: "Because they are different instruments. Ondo and bStocks each issue their own token against the same underlying, on their own venues, with their own share ratio. Nothing arbitrages them into line, so the effective cost per share can differ by tens of basis points at the same moment. On 17 September 2026 the two NVDA tokens were 39 bps apart on a mainnet fork. Parallax prices both and routes to the cheaper one." },
-    { q: "What does \"denominated in shares\" actually mean?", a: "Slippage protection is normally written in token units, which is meaningless when one token is not one share. Parallax converts every quantity through the issuer's ratio first: bStocks expose uiMultiplier() onchain under ERC-8056, Ondo's ratio is posted by a bounded keeper. The router then reverts unless the shares credited meet the minimum you signed for." },
-    { q: "Can the router run away with my funds?", a: "The swap calldata is untrusted by construction. Every leg targets an allowlisted contract, gets an approval sized to that leg which is reset to zero afterwards, and is credited only by the measured balance delta. There is no delegatecall, and an un-allowlisted target reverts with TargetNotAllowed." },
-    { q: "What happens to an index if an issuer pauses its token?", a: "That constituent freezes inside the vault. Everything else keeps working, and redeeming in kind still works: it cannot be blocked by a pause, an oracle, a stale keeper or a registry freshness window. That is the escape hatch the invariants exist to protect." },
-    { q: "Who can change an index's composition?", a: "Anyone, in one direction only. A migration must strictly increase the target constituent's share count by at least minShareGain, must not decrease any other constituent, and must not reduce the vault's USDT. A migration that is not share-accretive reverts; the fork test that proves it tried NVDAon into NVDAB through the 1% pool and was refused." },
-    { q: "Is this audited?", a: "Not by a firm. It is a hackathon prototype that went through a 12-agent AI audit round (six findings, all fixed the same day, documented in docs/decisions.md), 124 unit, fuzz and invariant tests, 6 mainnet-fork tests against real BSC state and a stateful Medusa campaign of 270k calls with 93 properties clean, which is not the same thing as an audit. The trust assumptions are stated rather than hidden: ADMIN is a deployer EOA, and the keeper posts Ondo ratios under step and freshness limits." },
-    { q: "What does it cost?", a: "A protocol fee of 0.5% of the USDT you trade, charged on buys, sells, index mints and USDT redemptions and shown on every quote before you sign. The contract caps it at 1%. Redeeming in kind carries no fee, so your exit never depends on anyone being paid. There is no token. Beyond that, users pay gas on their own transactions." },
+    { q: "Is this live?", a: "Not on mainnet. The contracts run on Robinhood Chain Testnet (chain id 46630) with mock tokens, and against a fork of Robinhood Chain mainnet (chain id 4663) with the real tokens, feeds and pools. Mainnet deployment is pending. The code is unaudited." },
+    { q: "Why is a token not a share?", a: "A Robinhood stock token carries an on-chain multiplier, uiMultiplier() under ERC-8056. It grows with reinvested dividends and changes on splits, so the number of tokens you hold is not the number of shares you own. Parallax converts every quantity to underlying shares before it compares, bounds or records anything." },
+    { q: "What does an index unit hold?", a: "A fixed number of underlying shares of each constituent, not a dollar weight that drifts with a manager. pxMAG7 holds the seven stocks at equal weight. pxAI holds NVDA at 40 % and MSFT, GOOGL and META at 20 % each. Each was sized to about 100 dollars a unit when configured. After every call the vault must hold at least units × sharesPerUnit of every constituent, or the call reverts." },
+    { q: "How do I get out of an index?", a: "Redeem for USDG, or redeem in kind and receive the stock tokens themselves. In-kind redemption does not depend on any oracle, venue or pause that Parallax controls, and it carries no fee. It does depend on the issuer: a token that Robinhood has paused, or an address it has blocked, cannot move until the issuer lifts that." },
+    { q: "What can an agent do with a mandate?", a: "Trade inside the limits the wallet owner set: a per-transaction cap and a daily cap in USDG, an expiry, an allowlist of stocks and vaults, and a maximum slippage against the Chainlink price. The agent trades through the mandate contract and can never receive the assets: output always goes to the owner. Revocation is one transaction and immediate. Agents connect through an MCP server with read tools and one write tool." },
+    { q: "How is a trade priced?", a: "Quotes come from the chain: the Uniswap v3 factory and QuoterV2, across fee tiers and through WETH where that returns more. Each quote is scored in dollars per underlying share against the Chainlink reference. Slippage protection is denominated in shares (minShares), and the receipt on chain links to the scoring record." },
+    { q: "Whom do I have to trust?", a: "An admin key, a single deployer key for now, registers tokens and sets limits. Robinhood, as issuer, can pause a token, block an address, burn, and upgrade the token contracts. Paxos can pause USDG or freeze an address. Chainlink stock feeds do not update over the weekend; a stale price blocks agent buys only, never an owner's own trade or exit." },
+    { q: "Is this audited?", a: "No. There are 139 Foundry tests, including fuzz and handler-based invariant suites (backing, redeem in kind, monotone migration, mandate caps), plus a fork test against the real tokens, feeds and pools. That is not an audit. Vault supply is capped at launch." },
+    { q: "What does it cost?", a: "A protocol fee of 0.5 % of USDG notional on buys, sells, mints and USDG redemptions. There is no fee on in-kind redemption. The contract hard-caps the fee at 1 %. You also pay network gas on your own transactions." },
+    { q: "Who can use it?", a: `Not U.S. persons. The issuer states: "Stock Tokens are not registered under U.S. securities laws and may not be offered, sold, or delivered, directly or indirectly, in the United States or to, or for the account or benefit of, U.S. persons." Restrictions apply in other jurisdictions too; see the terms. ${NOT_AFFILIATED}` },
   ],
 };
 
 /**
- * The three curated indices, in the Plans frame. Names, symbols, theses and constituents are the definitions
- * in contracts/script/config/bsc.json; returns, minimum and NAV are fetched live from the resolver and the
- * frame says so when they are not available.
+ * The Plans frame: three cards. Two are the indices (names, symbols and constituents are the definitions in
+ * contracts/script/config/robinhood.json; return, minimum and NAV are fetched live from the resolver and the
+ * card says so when they are not available). The third slot, which held a pricing tier in the reference, is
+ * the single-stock path, with the fee facts in place of live figures.
  */
+export type IndexCard = { kind: "index"; symbol: string; name: string; thesis: string; tickers: string[] };
+export type StocksCard = { kind: "stocks"; label: string; name: string; thesis: string; tickers: string[]; href: string; chip: string; figs: [string, string][]; note: string; go: string };
 export const PLANS = {
   tag: "Indices",
-  title: "Themes you invest in with one click.",
-  text: "A unit is a fixed number of shares per constituent, not a promise. Every leg is routed through the same resolver, so the index inherits best execution; redeeming in kind can never be paused.",
-  footnote: "Returns are price returns of one unit from Chainlink round history on BSC mainnet, dividends excluded; constituents without a feed are left out and the card says by how much. Minimum investment is $5, raised on an index where a constituent trades only through the aggregator's desk: the desk fills no leg under $5, so the order must be large enough to give that constituent its own $5. Not investment advice.",
+  title: "Two indices, each a fixed basket of shares.",
+  text: "A unit is a fixed number of underlying shares of each constituent. You deposit USDG, the vault buys every stock through Uniswap v3 in the same transaction, and you can redeem for USDG or in kind.",
   offline: "Live figures unavailable: the resolver is not reachable from this page right now.",
   cards: [
-    { symbol: "pxMAG7", name: "Parallax Magnificent 7", thesis: "The seven US megacaps that dominate index returns, equal-weighted so no single name decides the unit.", tickers: ["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA"] },
-    { symbol: "pxAI", name: "Parallax AI Infrastructure", thesis: "The picks and shovels of AI compute: silicon, networking, memory, foundry and rented GPUs, not the model labs.", tickers: ["NVDA", "AMD", "AVGO", "TSM", "MRVL", "MU", "CRWV"] },
-    { symbol: "pxNEW", name: "Parallax Private & Newly Public", thesis: "Exposure that is hard to get in a normal brokerage account: a pre-IPO name plus recent listings, tokenized.", tickers: ["SPCX", "CRCL", "CRWV", "COIN", "HOOD", "PLTR", "NBIS"] },
-  ],
+    { kind: "index", symbol: "pxMAG7", name: "Parallax Magnificent 7", thesis: "NVDA, AAPL, MSFT, AMZN, GOOGL, META and TSLA at equal weight, sized to about 100 dollars a unit when configured.", tickers: ["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA"] },
+    { kind: "index", symbol: "pxAI", name: "Parallax AI Compute", thesis: "NVDA at 40 % and MSFT, GOOGL and META at 20 % each, sized to about 100 dollars a unit when configured.", tickers: ["NVDA", "MSFT", "GOOGL", "META"] },
+    { kind: "stocks", label: "7 stocks", name: "Single stocks", thesis: "Any of the seven on its own, quoted in dollars per underlying share and filled with a minimum in shares.", tickers: ["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA"], href: "/stocks", chip: "router", figs: [["Stocks", "7"], ["Protocol fee", "0.5 %"], ["Fee cap", "1 %"]], note: "Quoted from Uniswap v3 against the Chainlink reference.", go: "Search a stock" },
+  ] as (IndexCard | StocksCard)[],
 };
 
 /** The template's mountain photograph, kept as the neutral backdrop behind product mocks. */

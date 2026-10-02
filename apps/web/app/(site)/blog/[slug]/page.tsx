@@ -3,7 +3,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { POSTS } from "@/content/blog";
 import { MORE_INSIGHTS } from "@/content/pages";
-import { META } from "@/content/site";
+import { META, REPO } from "@/content/site";
 import { Reveal, Tag, Icon } from "@/components/site/ui";
 import { PostCard } from "@/components/sections/shared";
 
@@ -38,7 +38,7 @@ export default async function Article({ params }: { params: Promise<{ slug: stri
             <div className="avatar-row sticky" style={{ top: 120, width: 380, background: "var(--color-card-1)" }}>
               <Image className="av" src={p.author.avatar} alt="" width={50} height={50} unoptimized />
               <div className="flex flex-col gap-[4px] flex-1"><span className="t-h6">{p.author.name}</span><span className="t-small" style={{ color: "var(--color-heading)" }}>{p.author.role}</span></div>
-              <a className="social" href="https://github.com/Adityaakr/parallax" target="_blank" rel="noreferrer" aria-label="Open the repository"><i className="arrow-mask" aria-hidden /></a>
+              <a className="social" href={REPO} target="_blank" rel="noreferrer" aria-label="Open the repository"><i className="arrow-mask" aria-hidden /></a>
             </div>
           </Reveal>
         </div>

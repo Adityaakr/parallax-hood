@@ -3,11 +3,11 @@
  * Footer: full-bleed Card 1 background, 1300 container, three dashed-ruled blocks.
  *   Top       padding 80px 40px, gap 20; H2 + Text Main + two buttons over a blurred orange wash
  *   Content   Newsletter 670 wide (80/40/40) | Navigation 630 wide (80/40), three columns gap 40, links gap 15
- *   Bottom    the reference has a row here ("©2026 Syncrun. Designed By Marso" | "Built in Framer"); ours is
- *             dropped, see .recon/DEVIATIONS.md
+ *   Bottom    the reference's row ("©2026 Syncrun. Designed By Marso" | "Built in Framer"), padding 20px 40px;
+ *             ours carries the eligibility and non-affiliation notices and a link to the terms
  * Column heads are Heading H6 (serif, declared 900 → renders 600). Links are Inter 600 16/19.2 -0.32, #4f4f4f.
  */
-import { CTA, FOOTER } from "@/content/site";
+import { CTA, FOOTER, REPO } from "@/content/site";
 import { A, Button, Icon } from "./ui";
 
 export function Footer() {
@@ -26,7 +26,7 @@ export function Footer() {
         </div>
         <div className="content">
           <div className="newsletter">
-            <form className="flex flex-col gap-[25px]" onSubmit={(e) => { e.preventDefault(); window.open("https://github.com/Adityaakr/parallax", "_blank", "noreferrer"); }}>
+            <form className="flex flex-col gap-[25px]" onSubmit={(e) => { e.preventDefault(); window.open(REPO, "_blank", "noreferrer"); }}>
               <div className="flex flex-col gap-[10px]">
                 <div className="t-h7b">{FOOTER.newsletter.title}</div>
                 <p className="t-main">{FOOTER.newsletter.text}</p>
@@ -45,6 +45,10 @@ export function Footer() {
               </div>
             ))}
           </div>
+        </div>
+        <div className="bottom">
+          <p className="t-small" style={{ color: "var(--color-heading)", textTransform: "none", lineHeight: "18px", maxWidth: 900 }}>{FOOTER.bottom.notice}</p>
+          <A className="t-small" href={FOOTER.bottom.link.href} style={{ color: "var(--color-heading)", flex: "none" }}>{FOOTER.bottom.link.label}</A>
         </div>
       </div>
     </footer>

@@ -5,7 +5,7 @@ Its design system is a measured reconstruction of the Syncrun template (https://
 Framer project `cdyA3db0MrYAtjey4Sey`): every token, frame and motion value was read from the live reference
 with Playwright (recon in `../../.recon/`), and the sections keep the reference's structure exactly. The
 content is Parallax's own (`content/*.ts`; the reference copy is kept in `content/syncrun/` for comparison)
-and every figure on it traces to `docs/recon.md`, `docs/decisions.md` or a recorded run named beside it.
+and every figure on it traces to `docs/addresses.md` or `contracts/script/config/robinhood.json`.
 
 ## Run
 
@@ -55,7 +55,7 @@ CSS custom properties on `:root`, exposed to Tailwind through `@theme inline`.
 |---|---|
 | `site/ui.tsx` | `Reveal` (spring / CSS entrance), `Tag` (Section Tag with the 9-bar barcode), `Button` (35px pill, sliding label + arrow badge), `Feat` (Features Item), `Bars`, `Counter`, `LogoRail`, `Icon` |
 | `site/Navbar.tsx` | Navbar: 1220×62 pill, transparent until scrolled, dot-separated menu, hamburger + stacked menu below 1024 |
-| `site/Footer.tsx` | Footer: CTA / newsletter + three link columns / credits |
+| `site/Footer.tsx` | Footer: CTA / newsletter + three link columns / bottom row (eligibility and non-affiliation notices) |
 | `sections/Hero.tsx` | Header: heading stack, UI-Card with the typewriter chat mock beside the testimonial card, logo rail |
 | `sections/Features.tsx` | three sticky Feature Cards (workflow, chat, chart mocks) |
 | `sections/Middle.tsx` | Integrations (4×4 cycling marks), Metrics (counters around the calculator), Process (sticky heading + Main Cards), Reviews (large card + ticker) |
@@ -63,12 +63,19 @@ CSS custom properties on `:root`, exposed to Tailwind through `@theme inline`.
 | `sections/About.tsx` | About header, logos, Manifesto (scroll-lit words), Benefits, Team |
 | `sections/NotFound.tsx` | Error 404 |
 
+Frames the product has no content for carry factual content of the same shape (all of it in `content/*.ts`):
+the hero's testimonial card states the ERC-8056 multiplier with its source; the logo rail lists the seven
+stocks and two indices as wordmarks (no third-party logos anywhere on the site); the Integrations grid names
+the stack as text; the Metrics calculator computes the protocol fee on an order; the Reviews frame carries what
+the contracts enforce and what a holder still trusts; the third Plans card and comparison column are the
+single-stock path. The footer's bottom row carries the eligibility and non-affiliation notices.
+
 Component measurements (paddings, gaps, widths) are in `app/components.css`, each rule commented with the
 frame it reproduces. Copy lives in `content/*.ts` (Parallax); the reference's verbatim copy is in `content/syncrun/`.
 
 ## Routes
 
-`(site)/` — `/`, `/about`, `/plans`, `/changelog`, `/blog`, `/blog/[slug]` (6), `/contact`,
+`(site)/` — `/`, `/about`, `/plans`, `/changelog`, `/blog`, `/blog/[slug]` (3), `/contact`,
 `/legals/[slug]` (2), `/404`, plus `not-found.tsx`. `(app)/` — the Parallax product (`/stocks`, `/buy/[ticker]`,
 `/baskets` (index cards: period return, minimum, NAV), `/baskets/[symbol]` (performance, allocation donut, asset cards, invest panel, vault), `/receipts`, `/mandates`, `/how-it-works`) on the same chrome via
 `components/app/AppShell.tsx` and `components/app/app.css`; the wallet/query providers load only there.
