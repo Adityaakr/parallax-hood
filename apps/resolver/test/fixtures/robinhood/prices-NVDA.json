@@ -1,0 +1,28 @@
+{
+ "quotes": [
+  {
+   "tokenSymbol": "NVDA",
+   "deployments": [
+    {
+     "contractAddress": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
+     "chainId": 4663,
+     "networkName": "Robinhood Chain",
+     "itnEnabled": false,
+     "atomicEnabled": false
+    }
+   ],
+   "bid": "235.54",
+   "ask": "235.56",
+   "currency": "USD",
+   "dailyTradingVolume": "75120399",
+   "isTradingHalt": false,
+   "generatedAt": "2026-10-02T15:58:04.719357183Z",
+   "dailyHigh": "237.87",
+   "dailyLow": "231.16",
+   "mintBurnTokenVolume": "11129.52994286",
+   "mintBurnUsdVolume": "2621560.778040673",
+   "tokenBid": "235.722580989637090346",
+   "tokenAsk": "235.742596492820382958"
+  }
+ ]
+}

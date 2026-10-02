@@ -34,11 +34,27 @@ const EnvSchema = z.object({
   FAUCET_PRIVATE_KEY: z.string().optional(),
   FAUCET_COOLDOWN_S: z.coerce.number().default(6 * 3600),
   /**
-   * Price a mock network against the live mainnet market instead of its own posted snapshot. Off by default:
-   * nothing re-prices the mock venue here, so a live reference would drift away from it and every quote would
-   * read as a premium that is only the age of the snapshot.
+   * Price a mock network against the live mainnet market instead of its own posted snapshot: Chainlink feeds,
+   * Uniswap pool depth and the issuer's quotes are read from Robinhood Chain mainnet, and execution stays here.
+   * Run it together with the mirror below, which keeps the mock venue and the registry on the same prices.
+   * Without the mirror the mock venue stays on its deploy-time snapshot and every quote reads as a premium that
+   * is only the age of that snapshot, which is why this is off by default.
    */
   HYBRID_MARKETS: z.coerce.boolean().default(false),
+  /**
+   * The mirror's signer on a mock network: the venue's owner or keeper, the registry's keeper and the owner of
+   * the mock stock tokens (the deployer holds all three after `pnpm testnet:up`). With it set and
+   * HYBRID_MARKETS on, the resolver copies mainnet's pool prices, Chainlink reference prices and multipliers
+   * onto the mocks. Refused on any network that is not a mock deployment.
+   */
+  MIRROR_PRIVATE_KEY: z.string().optional(),
+  MIRROR_INTERVAL_S: z.coerce.number().default(120),
+  /** A price is re-posted once it has moved this far from mainnet. */
+  MIRROR_THRESHOLD_BPS: z.coerce.number().default(10),
+  /** And at least this often, so the registry's reference never ages out over a weekend. */
+  MIRROR_HEARTBEAT_S: z.coerce.number().default(12 * 3600),
+  /** Robinhood's read-only Stock Token API: issuer quotes, trading sessions, corporate actions. Empty turns it off. */
+  ROBINHOOD_API_URL: z.string().default("https://api.robinhood.com/rhj"),
   /** Daily stock closes for the return figures (display only). Off on the mocks chain and in tests. */
   MARKET_HISTORY: z.coerce.boolean().default(true),
   MARKET_HISTORY_URL: z.string().default("https://query1.finance.yahoo.com"),
@@ -50,6 +66,8 @@ export type Config = z.infer<typeof EnvSchema> & {
   quoteOnly: boolean;
   /** true when this network executes on mock tokens twinned with mainnet tokens for every market read */
   hybrid: boolean;
+  /** Robinhood's API base, or null where it must not be called: a mock network priced from its own snapshot. */
+  issuerApi: string | null;
   network: NetworkKey;
   rpcUrl: string;
   deployment: Deployment;
@@ -74,5 +92,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const dbUrl = e.DATABASE_URL ?? `file:./parallax-${e.CHAIN_ID}.db`;
   const dbPath = dbUrl.startsWith("file:") ? dbUrl.slice(5) : dbUrl;
   const hybrid = e.HYBRID_MARKETS && Boolean(deployment.mocks);
-  return { ...e, DATABASE_URL: dbUrl, quoteOnly, hybrid, network, rpcUrl, deployment, chain: CHAINS[network], dbPath };
+  // The issuer's quotes describe the mainnet tokens. A mock network on its own snapshot has nothing to do with
+  // them, and the local mocks chain must stay offline for the tests.
+  const issuerApi = e.ROBINHOOD_API_URL && (!deployment.mocks || hybrid) && network !== "mocks" ? e.ROBINHOOD_API_URL.replace(/\/$/, "") : null;
+  return { ...e, DATABASE_URL: dbUrl, quoteOnly, hybrid, issuerApi, network, rpcUrl, deployment, chain: CHAINS[network], dbPath };
 }
