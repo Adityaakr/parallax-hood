@@ -10,7 +10,7 @@
     "dev": "pnpm -r --parallel --filter './apps/*' dev",
     "contracts:test": "cd contracts && forge test",
     "contracts:build": "cd contracts && forge build",
-    "contracts:fork-test": "cd contracts && forge test --match-path 'test/fork/*' --no-match-path none",
+    "contracts:fork-test": "./scripts/fork-test.sh",
     "universe": "pnpm --filter @parallax-hood/scripts gen-universe",
     "mocks:up": "./scripts/mocks-up.sh",
     "fork:up": "./scripts/fork-up.sh",
