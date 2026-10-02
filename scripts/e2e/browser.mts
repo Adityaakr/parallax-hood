@@ -145,7 +145,15 @@ await step(page, "buy 100 USDG of NVDA", async () => {
   await page.goto(`${BASE}/buy/NVDA`, { waitUntil: "domcontentloaded" });
   const amount = page.getByLabel(/amount/i).first();
   await amount.waitFor({ timeout: 30_000 });
-  await amount.fill("100");
+  // A value typed while the page is still hydrating is put back to the default, so type until it holds and the
+  // total on screen is the one this step expects. Nothing is signed before that.
+  const total = page.locator(".fee-row", { hasText: "Total USDG incl. fee" }).getByText("100.5", { exact: true });
+  for (let i = 0; ; i++) {
+    await amount.fill("100");
+    const shown = await total.waitFor({ timeout: 8_000 }).then(() => true, () => false);
+    if (shown && (await amount.inputValue()) === "100") break;
+    if (i === 5) throw new Error(`the amount box holds ${await amount.inputValue()} and the total never read 100.5`);
+  }
   const buy = page.getByRole("button", { name: "Buy NVDA" });
   await buy.waitFor({ timeout: 30_000 });
   await enabled(page, "Buy NVDA");
