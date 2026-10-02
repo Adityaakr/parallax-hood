@@ -41,6 +41,6 @@ aged out attestations (36 h) and reference prices; added `stockRegistry_keeperRe
 | LegExecutor / ReceiptEmitter / ShareMath | libs | inherited | 100 / 100 / 86% | ✅ |
 | BasketFactory | one-shot (createBasket runs once in setup; revert paths are unit-tested) | n/a | 63% | — |
 
-All targets met. One harness-side failure: "B6: vault keeps no mint USDT beyond donations" compared the vault's
-USDT to donations only, but the vault legitimately holds USDT from migration residue and forfeited in-kind
-slices (`redeemInKindSkipping` with USDT skipped). Restated as "a mint does not change vault USDT".
+All targets met. One harness-side failure: "B6: vault keeps no mint USDG beyond donations" compared the vault's
+USDG to donations only, but the vault legitimately holds USDG from migration residue and forfeited in-kind
+slices (`redeemInKindSkipping` with USDG skipped). Restated as "a mint does not change vault USDG".

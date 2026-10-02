@@ -7,7 +7,7 @@ import {AgentMandate} from "../../src/AgentMandate.sol";
 import {LegExecutor} from "../../src/libraries/LegExecutor.sol";
 import {ShareRouter} from "../../src/ShareRouter.sol";
 import {BasketVault} from "../../src/BasketVault.sol";
-import {MockUSDT} from "../../src/mocks/MockUSDT.sol";
+import {MockUSDG} from "../../src/mocks/MockUSDG.sol";
 import {MockStockToken} from "../../src/mocks/MockStockToken.sol";
 import {MockSwapTarget} from "../../src/mocks/MockSwapTarget.sol";
 
@@ -18,7 +18,7 @@ contract MandateHandler is Test {
     AgentMandate public mandate;
     ShareRouter public router;
     BasketVault public basket;
-    MockUSDT public usdt;
+    MockUSDG public usdg;
     MockStockToken public nvdaB;
     MockStockToken public aaplB;
     MockStockToken public nvdaOn;
@@ -27,8 +27,8 @@ contract MandateHandler is Test {
     address public agent;
     uint256 public id;
 
-    uint128 constant PER_TX = 500e18;
-    uint128 constant DAILY = 1000e18;
+    uint128 constant PER_TX = 500e6;
+    uint128 constant DAILY = 1000e6;
 
     // ghost: spend per window as observed from owner balance deltas
     uint256 public windowStart;
@@ -44,7 +44,7 @@ contract MandateHandler is Test {
         AgentMandate m,
         ShareRouter r,
         BasketVault b,
-        MockUSDT u,
+        MockUSDG u,
         MockStockToken nb,
         MockStockToken ab,
         MockStockToken on,
@@ -55,7 +55,7 @@ contract MandateHandler is Test {
         mandate = m;
         router = r;
         basket = b;
-        usdt = u;
+        usdg = u;
         nvdaB = nb;
         aaplB = ab;
         nvdaOn = on;
@@ -68,7 +68,7 @@ contract MandateHandler is Test {
         address[] memory bs = new address[](1);
         bs[0] = address(basket);
         vm.startPrank(owner);
-        usdt.approve(address(mandate), type(uint256).max);
+        usdg.approve(address(mandate), type(uint256).max);
         id = mandate.createMandate(agent, PER_TX, DAILY, expiry, 500, us, bs);
         vm.stopPrank();
     }
@@ -88,7 +88,7 @@ contract MandateHandler is Test {
     }
 
     function _record(uint256 ownerBefore) internal {
-        uint256 spent = ownerBefore - usdt.balanceOf(owner);
+        uint256 spent = ownerBefore - usdg.balanceOf(owner);
         if (block.timestamp >= windowStart + 1 days) {
             windowStart = block.timestamp;
             spentThisWindow = 0;
@@ -101,12 +101,12 @@ contract MandateHandler is Test {
     }
 
     function agentBuy(uint256 amount, bool wrongUnderlying, bool payAgent) external {
-        amount = bound(amount, 1e18, 2000e18);
+        amount = bound(amount, 1e6, 2000e6);
         bytes32 u = wrongUnderlying ? bytes32("AAPL") : bytes32("NVDA");
         address tok = wrongUnderlying ? address(aaplB) : address(nvdaB);
         LegExecutor.Leg[] memory legs = new LegExecutor.Leg[](1);
-        legs[0] = _leg(address(usdt), tok, amount, payAgent ? agent : address(router));
-        uint256 before = usdt.balanceOf(owner);
+        legs[0] = _leg(address(usdg), tok, amount, payAgent ? agent : address(router));
+        uint256 before = usdg.balanceOf(owner);
         vm.prank(agent);
         try mandate.agentBuyShares(id, u, amount, 0, legs, bytes32(amount)) {
             _record(before);
@@ -115,17 +115,18 @@ contract MandateHandler is Test {
 
     function agentMint(uint256 units, uint256 headroomBps) external {
         units = bound(units, 1e16, 5e18);
-        // a unit is worth ~38.5 USDT at the fixture prices; the mandate's floor tolerates 5 % below reference,
+        // a unit is worth ~38.5 USDG at the fixture prices; the mandate's floor tolerates 5 % below reference,
         // so size the budget close to fair value (an overspend would be the diverted-value case the floor rejects)
-        uint256 maxUsdt = units * 385 / 10 * (10_000 + bound(headroomBps, 150, 350)) / 10_000;
-        // legs: 70/30 NVDA + AAPL at fair price, sized to maxUsdt roughly
+        // (units are 1e18-scaled, USDG has 6 decimals: the 1e12 brings the 1e18-scaled USD value down to USDG)
+        uint256 maxUsdg = units * 385 / 10 * (10_000 + bound(headroomBps, 150, 350)) / 10_000 / 1e12;
+        // legs: 70/30 NVDA + AAPL at fair price, sized to maxUsdg roughly
         LegExecutor.Leg[] memory legs = new LegExecutor.Leg[](3);
-        legs[0] = _leg(address(usdt), address(nvdaB), maxUsdt * 40 / 100, address(basket));
-        legs[1] = _leg(address(usdt), address(nvdaOn), maxUsdt * 17 / 100, address(basket));
-        legs[2] = _leg(address(usdt), address(aaplB), maxUsdt * 43 / 100, address(basket));
-        uint256 before = usdt.balanceOf(owner);
+        legs[0] = _leg(address(usdg), address(nvdaB), maxUsdg * 40 / 100, address(basket));
+        legs[1] = _leg(address(usdg), address(nvdaOn), maxUsdg * 17 / 100, address(basket));
+        legs[2] = _leg(address(usdg), address(aaplB), maxUsdg * 43 / 100, address(basket));
+        uint256 before = usdg.balanceOf(owner);
         vm.prank(agent);
-        try mandate.agentMintBasket(id, address(basket), units, maxUsdt, legs, bytes32(units)) {
+        try mandate.agentMintBasket(id, address(basket), units, maxUsdg, legs, bytes32(units)) {
             _record(before);
         } catch {}
     }
@@ -146,7 +147,7 @@ contract AgentMandateInvariants is BaseTest {
 
     function setUp() public override {
         super.setUp();
-        handler = new MandateHandler(mandate, router, basket, usdt, nvdaB, aaplB, nvdaOn, venue, alice, agent);
+        handler = new MandateHandler(mandate, router, basket, usdg, nvdaB, aaplB, nvdaOn, venue, alice, agent);
         targetContract(address(handler));
         bytes4[] memory sels = new bytes4[](5);
         sels[0] = MandateHandler.agentBuy.selector;
@@ -164,20 +165,20 @@ contract AgentMandateInvariants is BaseTest {
 
     /// The agent never ends up holding any asset.
     function invariant_agentNeverReceivesAssets() public view {
-        assertEq(usdt.balanceOf(agent), 0);
+        assertEq(usdg.balanceOf(agent), 0);
         assertEq(nvdaB.balanceOf(agent), 0);
         assertEq(nvdaOn.balanceOf(agent), 0);
         assertEq(aaplB.balanceOf(agent), 0);
         assertEq(basket.balanceOf(agent), 0);
-        assertEq(usdt.balanceOf(address(mandate)), 0);
+        assertEq(usdg.balanceOf(address(mandate)), 0);
         assertEq(nvdaB.balanceOf(address(mandate)), 0);
     }
 
     /// No single spend above the per-tx cap and no window above the daily cap.
     function invariant_capsNeverExceeded() public view {
-        assertLe(handler.maxSingleSpend(), 500e18);
-        assertLe(handler.spentThisWindow(), 1000e18);
-        assertLe(mandate.getMandate(handler.id()).spentInWindow, 1000e18);
+        assertLe(handler.maxSingleSpend(), 500e6);
+        assertLe(handler.spentThisWindow(), 1000e6);
+        assertLe(mandate.getMandate(handler.id()).spentInWindow, 1000e6);
     }
 
     /// Nothing gets through after revocation or expiry.

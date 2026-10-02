@@ -20,13 +20,13 @@ contract ShareRouter is IShareRouter, ReceiptEmitter, ReentrancyGuard {
     uint8 public constant ACTION_SELL = 1;
 
     IStockRegistry public immutable registry;
-    IERC20 public immutable usdt;
+    IERC20 public immutable usdg;
 
     event BuyExecuted(
         bytes32 indexed quoteHash,
         address indexed actor,
         bytes32 indexed underlyingId,
-        uint256 usdtSpent,
+        uint256 usdgSpent,
         uint256 sharesOut
     );
     event SellExecuted(
@@ -34,47 +34,47 @@ contract ShareRouter is IShareRouter, ReceiptEmitter, ReentrancyGuard {
         address indexed actor,
         bytes32 indexed underlyingId,
         uint256 tokensSold,
-        uint256 usdtOut
+        uint256 usdgOut
     );
 
     error TargetNotAllowed(address target);
-    error LegTokenInMustBeUsdt(address tokenIn);
-    error LegTokenOutMustBeUsdt(address tokenOut);
+    error LegTokenInMustBeUsdg(address tokenIn);
+    error LegTokenOutMustBeUsdg(address tokenOut);
     error LegTokenInMismatch(address tokenIn);
     error NotBuyEligible(address token);
     error NotSellEligible(address token);
     error WrongUnderlying(address token, bytes32 expected);
     error InsufficientShares(uint256 sharesOut, uint256 minShares);
-    error InsufficientUsdtOut(uint256 usdtOut, uint256 minUsdtOut);
+    error InsufficientUsdgOut(uint256 usdgOut, uint256 minUsdgOut);
     error ZeroAmount();
     error InsufficientForFee(uint256 leftover, uint256 fee);
 
     event FeeCharged(bytes32 indexed quoteHash, address indexed recipient, uint256 fee);
     error ZeroAddress();
     error NoLegs();
-    error OverSpent(uint256 spent, uint256 usdtIn);
+    error OverSpent(uint256 spent, uint256 usdgIn);
     error OverSold(uint256 sold, uint256 tokenAmount);
 
     constructor(IStockRegistry registry_) {
         registry = registry_;
-        usdt = IERC20(registry_.usdt());
+        usdg = IERC20(registry_.usdg());
     }
 
     /// @inheritdoc IShareRouter
     function buyShares(
         bytes32 underlyingId,
-        uint256 usdtIn,
+        uint256 usdgIn,
         uint256 minShares,
         LegExecutor.Leg[] calldata legs,
         address recipient,
         bytes32 quoteHash
     ) external override nonReentrant returns (uint256 sharesOut) {
-        if (usdtIn == 0) revert ZeroAmount();
+        if (usdgIn == 0) revert ZeroAmount();
         if (recipient == address(0)) revert ZeroAddress();
         if (legs.length == 0) revert NoLegs();
 
-        usdt.safeTransferFrom(msg.sender, address(this), usdtIn);
-        uint256 usdtBefore = usdt.balanceOf(address(this));
+        usdg.safeTransferFrom(msg.sender, address(this), usdgIn);
+        uint256 usdgBefore = usdg.balanceOf(address(this));
 
         for (uint256 i = 0; i < legs.length; i++) {
             sharesOut += _executeBuyLeg(legs[i], underlyingId, recipient, quoteHash);
@@ -82,14 +82,14 @@ contract ShareRouter is IShareRouter, ReceiptEmitter, ReentrancyGuard {
 
         if (sharesOut < minShares) revert InsufficientShares(sharesOut, minShares);
 
-        uint256 spentTotal = usdtBefore - usdt.balanceOf(address(this));
-        if (spentTotal > usdtIn) revert OverSpent(spentTotal, usdtIn);
+        uint256 spentTotal = usdgBefore - usdg.balanceOf(address(this));
+        if (spentTotal > usdgIn) revert OverSpent(spentTotal, usdgIn);
         // The protocol fee is a share of the notional spent, paid from what the caller sent in; the quote
-        // sizes usdtIn to cover it. Refund the rest of *this caller's* deposit only (audit F-5): the router
+        // sizes usdgIn to cover it. Refund the rest of *this caller's* deposit only (audit F-5): the router
         // never keeps balances, and whatever else sits here is not the caller's to sweep.
-        uint256 refund = usdtIn - spentTotal;
+        uint256 refund = usdgIn - spentTotal;
         refund -= _chargeFee(spentTotal, refund, quoteHash);
-        if (refund > 0) usdt.safeTransfer(msg.sender, refund);
+        if (refund > 0) usdg.safeTransfer(msg.sender, refund);
 
         emit BuyExecuted(quoteHash, msg.sender, underlyingId, spentTotal, sharesOut);
     }
@@ -99,11 +99,11 @@ contract ShareRouter is IShareRouter, ReceiptEmitter, ReentrancyGuard {
         bytes32 underlyingId,
         address representation,
         uint256 tokenAmount,
-        uint256 minUsdtOut,
+        uint256 minUsdgOut,
         LegExecutor.Leg[] calldata legs,
         address recipient,
         bytes32 quoteHash
-    ) external override nonReentrant returns (uint256 usdtOut) {
+    ) external override nonReentrant returns (uint256 usdgOut) {
         if (tokenAmount == 0) revert ZeroAmount();
         if (recipient == address(0)) revert ZeroAddress();
         if (legs.length == 0) revert NoLegs();
@@ -114,17 +114,17 @@ contract ShareRouter is IShareRouter, ReceiptEmitter, ReentrancyGuard {
 
         IERC20 rep = IERC20(representation);
         rep.safeTransferFrom(msg.sender, address(this), tokenAmount);
-        uint256 usdtBefore = usdt.balanceOf(address(this));
+        uint256 usdgBefore = usdg.balanceOf(address(this));
 
         uint256 soldTotal;
         for (uint256 i = 0; i < legs.length; i++) {
             soldTotal += _executeSellLeg(legs[i], underlyingId, representation, quoteHash);
         }
 
-        usdtOut = usdt.balanceOf(address(this)) - usdtBefore;
-        usdtOut -= _chargeFee(usdtOut, usdtOut, quoteHash); // minUsdtOut is net of the fee
-        if (usdtOut < minUsdtOut) revert InsufficientUsdtOut(usdtOut, minUsdtOut);
-        usdt.safeTransfer(recipient, usdtOut);
+        usdgOut = usdg.balanceOf(address(this)) - usdgBefore;
+        usdgOut -= _chargeFee(usdgOut, usdgOut, quoteHash); // minUsdgOut is net of the fee
+        if (usdgOut < minUsdgOut) revert InsufficientUsdgOut(usdgOut, minUsdgOut);
+        usdg.safeTransfer(recipient, usdgOut);
 
         // Return the seller's unsold representation tokens: what they deposited minus what the legs sold,
         // never the router's whole balance (audit F-6).
@@ -132,7 +132,7 @@ contract ShareRouter is IShareRouter, ReceiptEmitter, ReentrancyGuard {
         uint256 leftover = tokenAmount - soldTotal;
         if (leftover > 0) rep.safeTransfer(msg.sender, leftover);
 
-        emit SellExecuted(quoteHash, msg.sender, underlyingId, soldTotal, usdtOut);
+        emit SellExecuted(quoteHash, msg.sender, underlyingId, soldTotal, usdgOut);
     }
 
     // ------------------------------------------------------------------
@@ -146,7 +146,7 @@ contract ShareRouter is IShareRouter, ReceiptEmitter, ReentrancyGuard {
         fee = (notional * bps) / 10_000;
         if (fee == 0) return 0;
         if (fee > available) revert InsufficientForFee(available, fee);
-        usdt.safeTransfer(to, fee);
+        usdg.safeTransfer(to, fee);
         emit FeeCharged(quoteHash, to, fee);
     }
 
@@ -155,7 +155,7 @@ contract ShareRouter is IShareRouter, ReceiptEmitter, ReentrancyGuard {
         returns (uint256 shares)
     {
         if (!registry.isAllowedTarget(leg.target)) revert TargetNotAllowed(leg.target);
-        if (leg.tokenIn != address(usdt)) revert LegTokenInMustBeUsdt(leg.tokenIn);
+        if (leg.tokenIn != address(usdg)) revert LegTokenInMustBeUsdg(leg.tokenIn);
         if (!registry.isBuyEligible(leg.tokenOut)) revert NotBuyEligible(leg.tokenOut);
         if (registry.underlyingOf(leg.tokenOut) != underlyingId) revert WrongUnderlying(leg.tokenOut, underlyingId);
 
@@ -167,7 +167,7 @@ contract ShareRouter is IShareRouter, ReceiptEmitter, ReentrancyGuard {
             Receipt({
                 quoteHash: quoteHash,
                 underlyingId: underlyingId,
-                tokenIn: address(usdt),
+                tokenIn: address(usdg),
                 amountIn: spent,
                 representation: leg.tokenOut,
                 tokensOut: received,
@@ -184,7 +184,7 @@ contract ShareRouter is IShareRouter, ReceiptEmitter, ReentrancyGuard {
     ) internal returns (uint256 spent) {
         if (!registry.isAllowedTarget(leg.target)) revert TargetNotAllowed(leg.target);
         if (leg.tokenIn != representation) revert LegTokenInMismatch(leg.tokenIn);
-        if (leg.tokenOut != address(usdt)) revert LegTokenOutMustBeUsdt(leg.tokenOut);
+        if (leg.tokenOut != address(usdg)) revert LegTokenOutMustBeUsdg(leg.tokenOut);
 
         (spent,) = leg.execute();
         _emitRouteReceipt(

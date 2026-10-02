@@ -12,27 +12,27 @@ abstract contract BasketVaultHandler is Properties {
     function basketVault_mint_clamped(uint256 units, uint16 bstockBps, address recipient) public {
         units = clampBetween(units, 0.01e18, 50e18);
         bstockBps = uint16(clampBetween(bstockBps, 0, BPS));
-        (LegExecutor.Leg[] memory legs, uint256 maxUsdt) = _mintLegs(units, bstockBps);
-        if (usdt.balanceOf(actor) < maxUsdt) return;
-        basketVault_mint(units, maxUsdt, legs, toActor(recipient));
+        (LegExecutor.Leg[] memory legs, uint256 maxUsdg) = _mintLegs(units, bstockBps);
+        if (usdg.balanceOf(actor) < maxUsdg) return;
+        basketVault_mint(units, maxUsdg, legs, toActor(recipient));
     }
 
     /// @dev Sub-unit mints: rounding of requiredShares (ceil) vs delivered (floor) is the pressure point.
     function basketVault_mint_dust(uint256 units, uint16 bstockBps) public {
         units = clampBetween(units, 1, 1e12);
         bstockBps = uint16(clampBetween(bstockBps, 0, BPS));
-        (LegExecutor.Leg[] memory legs, uint256 maxUsdt) = _mintLegs(units, bstockBps);
-        if (usdt.balanceOf(actor) < maxUsdt) return;
-        basketVault_mint(units, maxUsdt, legs, actor);
+        (LegExecutor.Leg[] memory legs, uint256 maxUsdg) = _mintLegs(units, bstockBps);
+        if (usdg.balanceOf(actor) < maxUsdg) return;
+        basketVault_mint(units, maxUsdg, legs, actor);
     }
 
-    /// @dev Over-budget mint: legs sized for `units` but maxUsdtIn twice that; the surplus must come back.
+    /// @dev Over-budget mint: legs sized for `units` but maxUsdgIn twice that; the surplus must come back.
     function basketVault_mint_overBudget(uint256 units, uint16 bstockBps) public {
         units = clampBetween(units, 0.01e18, 20e18);
         bstockBps = uint16(clampBetween(bstockBps, 0, BPS));
-        (LegExecutor.Leg[] memory legs, uint256 maxUsdt) = _mintLegs(units, bstockBps);
-        if (usdt.balanceOf(actor) < maxUsdt * 2) return;
-        basketVault_mint(units, maxUsdt * 2, legs, actor);
+        (LegExecutor.Leg[] memory legs, uint256 maxUsdg) = _mintLegs(units, bstockBps);
+        if (usdg.balanceOf(actor) < maxUsdg * 2) return;
+        basketVault_mint(units, maxUsdg * 2, legs, actor);
     }
 
     /// @dev Legs that only buy NVDA, or none at all: must revert (UnderDelivered / NoLegs), never mint.
@@ -41,13 +41,13 @@ abstract contract BasketVaultHandler is Properties {
         LegExecutor.Leg[] memory legs;
         uint256 budget = 1;
         if (shape % 2 == 1) {
-            uint256 u1 = _usdtForShares(address(nvdaB), units * NVDA_PER_UNIT / WAD + 1);
+            uint256 u1 = _usdgForShares(address(nvdaB), units * NVDA_PER_UNIT / WAD + 1);
             budget = u1 + u1 / 100 + 1;
-            legs = _legs1(_leg(address(usdt), address(nvdaB), u1, address(basket)));
+            legs = _legs1(_leg(address(usdg), address(nvdaB), u1, address(basket)));
         } else {
             legs = new LegExecutor.Leg[](0);
         }
-        if (usdt.balanceOf(actor) < budget) return;
+        if (usdg.balanceOf(actor) < budget) return;
         uint256 unitsBefore = basket.balanceOf(actor);
         uint256 supplyBefore = basket.totalSupply();
         vm.prank(actor);
@@ -57,7 +57,7 @@ abstract contract BasketVaultHandler is Properties {
         _prop_mintWithoutDelivery(unitsBefore, supplyBefore);
     }
 
-    /// @dev Redeem to USDT, selling `sellBps` of each pro-rata slice; the rest goes out in kind.
+    /// @dev Redeem to USDG, selling `sellBps` of each pro-rata slice; the rest goes out in kind.
     function basketVault_redeem_clamped(uint256 units, uint16 sellBps, address recipient) public {
         uint256 bal = basket.balanceOf(actor);
         if (bal == 0) return;
@@ -94,12 +94,12 @@ abstract contract BasketVaultHandler is Properties {
         if (held == 0) return;
         uint256 sell = held * sellBps / BPS;
         if (sell == 0) return;
-        uint256 usdtOut = venue.quote(from, address(usdt), sell);
-        if (usdtOut == 0) return;
-        basketVault_migrate(sell, usdtOut, from, to, clampBetween(minShareGain, 0, 1e15));
+        uint256 usdgOut = venue.quote(from, address(usdg), sell);
+        if (usdgOut == 0) return;
+        basketVault_migrate(sell, usdgOut, from, to, clampBetween(minShareGain, 0, 1e15));
     }
 
-    /// @dev Migration legs that only sell (USDT stays in the vault): must revert, never reduce shares.
+    /// @dev Migration legs that only sell (USDG stays in the vault): must revert, never reduce shares.
     function basketVault_migrate_sellOnly(uint16 sellBps, bool ondo) public {
         address from = ondo ? address(nvdaOn) : address(nvdaB);
         uint256 held = IERC20(from).balanceOf(address(basket));
@@ -110,7 +110,7 @@ abstract contract BasketVaultHandler is Properties {
     }
 
     function basketVault_donateERC20(uint256 amount, uint8 tokenSeed) public {
-        address token = tokenSeed % 4 == 3 ? address(usdt) : reps[tokenSeed % reps.length];
+        address token = tokenSeed % 4 == 3 ? address(usdg) : reps[tokenSeed % reps.length];
         uint256 bal = IERC20(token).balanceOf(actor);
         if (bal == 0) return;
         amount = clampBetween(amount, 1, bal);
@@ -130,31 +130,31 @@ abstract contract BasketVaultHandler is Properties {
     }
 
     /// @notice SP-01: mint->redeemInKind round trip by the same actor, same units — must not leave them with
-    ///         more USDT or more of any representation than before.
+    ///         more USDG or more of any representation than before.
     function roundTrip_mintRedeemInKind(uint256 units, uint16 bstockBps) public {
         units = clampBetween(units, 0.01e18, 20e18);
         bstockBps = uint16(clampBetween(bstockBps, 0, BPS));
-        (LegExecutor.Leg[] memory legs, uint256 maxUsdt) = _mintLegs(units, bstockBps);
-        if (usdt.balanceOf(actor) < maxUsdt) return;
+        (LegExecutor.Leg[] memory legs, uint256 maxUsdg) = _mintLegs(units, bstockBps);
+        if (usdg.balanceOf(actor) < maxUsdg) return;
 
-        uint256 usdtBefore = usdt.balanceOf(actor);
+        uint256 usdgBefore = usdg.balanceOf(actor);
         bool cleanBefore = _vaultClean();
         uint256[] memory repBefore = new uint256[](reps.length);
         for (uint256 i = 0; i < reps.length; i++) repBefore[i] = IERC20(reps[i]).balanceOf(actor);
 
         vm.startPrank(actor);
-        try basket.mint(units, maxUsdt, legs, actor, keccak256(abi.encode("SP01", units, block.timestamp, actor)))
+        try basket.mint(units, maxUsdg, legs, actor, keccak256(abi.encode("SP01", units, block.timestamp, actor)))
             returns (uint256)
         {
             try basket.redeemInKind(units, actor) {
-                _prop_mintRedeemInKindRoundTrip(usdtBefore, repBefore, cleanBefore);
+                _prop_mintRedeemInKindRoundTrip(usdgBefore, repBefore, cleanBefore);
             } catch {}
         } catch {}
         vm.stopPrank();
     }
 
-    /// @notice SP-02: at zero protocol and venue fee, mint->redeem(sell 100% to USDT) must not return more
-    ///         USDT than was spent.
+    /// @notice SP-02: at zero protocol and venue fee, mint->redeem(sell 100% to USDG) must not return more
+    ///         USDG than was spent.
     function roundTrip_mintRedeemFullSell_zeroFee(uint256 units, uint16 bstockBps) public {
         units = clampBetween(units, 0.01e18, 20e18);
         bstockBps = uint16(clampBetween(bstockBps, 0, BPS));
@@ -166,12 +166,12 @@ abstract contract BasketVaultHandler is Properties {
         vm.prank(admin);
         venue.setFeeBps(0);
 
-        (LegExecutor.Leg[] memory legs, uint256 maxUsdt) = _mintLegs(units, bstockBps);
-        if (usdt.balanceOf(actor) >= maxUsdt) {
-            uint256 usdtBefore = usdt.balanceOf(actor);
+        (LegExecutor.Leg[] memory legs, uint256 maxUsdg) = _mintLegs(units, bstockBps);
+        if (usdg.balanceOf(actor) >= maxUsdg) {
+            uint256 usdgBefore = usdg.balanceOf(actor);
         bool cleanBefore = _vaultClean();
             vm.startPrank(actor);
-            try basket.mint(units, maxUsdt, legs, actor, keccak256(abi.encode("SP02", units, block.timestamp, actor)))
+            try basket.mint(units, maxUsdg, legs, actor, keccak256(abi.encode("SP02", units, block.timestamp, actor)))
                 returns (uint256)
             {
                 uint256 supply = basket.totalSupply();
@@ -180,14 +180,14 @@ abstract contract BasketVaultHandler is Properties {
                 for (uint256 i = 0; i < reps.length; i++) {
                     uint256 slice = IERC20(reps[i]).balanceOf(address(basket)) * units / supply;
                     if (slice == 0) continue;
-                    tmp[n++] = _leg(reps[i], address(usdt), slice, address(basket));
+                    tmp[n++] = _leg(reps[i], address(usdg), slice, address(basket));
                 }
                 LegExecutor.Leg[] memory sellLegs = new LegExecutor.Leg[](n);
                 for (uint256 i = 0; i < n; i++) sellLegs[i] = tmp[i];
                 try basket.redeem(
                     units, 0, sellLegs, actor, keccak256(abi.encode("SP02r", units, block.timestamp, actor))
                 ) returns (uint256) {
-                    _prop_mintRedeemFullSellZeroFee(usdtBefore, cleanBefore);
+                    _prop_mintRedeemFullSellZeroFee(usdgBefore, cleanBefore);
                 } catch {}
             } catch {}
             vm.stopPrank();
@@ -200,25 +200,25 @@ abstract contract BasketVaultHandler is Properties {
     }
 
     /// @notice SP-03: N repeated mint->redeemInKind cycles of the same size must not let the actor's aggregate
-    ///         USDT balance grow (compounding-rounding detector, distinct from the single round trip SP-01).
+    ///         USDG balance grow (compounding-rounding detector, distinct from the single round trip SP-01).
     function roundTrip_mintRedeemInKind_Ncycles(uint256 units, uint8 cycles) public {
         units = clampBetween(units, 0.01e18, 5e18);
         cycles = uint8(clampBetween(cycles, 2, 6));
-        uint256 usdtBefore = usdt.balanceOf(actor);
+        uint256 usdgBefore = usdg.balanceOf(actor);
         bool cleanBefore = _vaultClean();
 
         for (uint256 c = 0; c < cycles; c++) {
-            (LegExecutor.Leg[] memory legs, uint256 maxUsdt) = _mintLegs(units, 5_000);
-            if (usdt.balanceOf(actor) < maxUsdt) break;
+            (LegExecutor.Leg[] memory legs, uint256 maxUsdg) = _mintLegs(units, 5_000);
+            if (usdg.balanceOf(actor) < maxUsdg) break;
             vm.startPrank(actor);
-            try basket.mint(units, maxUsdt, legs, actor, keccak256(abi.encode("SP03", units, c, block.timestamp, actor)))
+            try basket.mint(units, maxUsdg, legs, actor, keccak256(abi.encode("SP03", units, c, block.timestamp, actor)))
                 returns (uint256)
             {
                 try basket.redeemInKind(units, actor) {} catch {}
             } catch {}
             vm.stopPrank();
         }
-        _prop_mintRedeemInKindNCycles(usdtBefore, cleanBefore);
+        _prop_mintRedeemInKindNCycles(usdgBefore, cleanBefore);
     }
 
     /// @notice SP-17: a basket-unit self-transfer (actor sends to themselves) and a zero-amount transfer are
@@ -236,22 +236,22 @@ abstract contract BasketVaultHandler is Properties {
 
     // ―――――――――――――――――――――――― Unclamped ―――――――――――――――――――――――――
 
-    function basketVault_mint(uint256 units, uint256 maxUsdtIn, LegExecutor.Leg[] memory legs, address recipient)
+    function basketVault_mint(uint256 units, uint256 maxUsdgIn, LegExecutor.Leg[] memory legs, address recipient)
         public
         asActor
     {
         snapshotBefore();
-        uint256 usdtBefore = usdt.balanceOf(actor);
+        uint256 usdgBefore = usdg.balanceOf(actor);
         uint256 unitsBefore = basket.balanceOf(recipient);
-        uint256 spent = basket.mint(units, maxUsdtIn, legs, recipient, keccak256(abi.encode(units, maxUsdtIn)));
+        uint256 spent = basket.mint(units, maxUsdgIn, legs, recipient, keccak256(abi.encode(units, maxUsdgIn)));
         snapshotAfter();
         _recordFeePaid();
         _prop_feeExact(spent);
-        _prop_mint(units, maxUsdtIn, spent, usdtBefore, unitsBefore, recipient);
+        _prop_mint(units, maxUsdgIn, spent, usdgBefore, unitsBefore, recipient);
     }
 
-    /// @dev Sell legs for `sellBps` of every representation's pro-rata slice; tokenOut is always USDT.
-    function basketVault_redeem(uint256 units, uint16 sellBps, uint256 minUsdtOut, address recipient) public asActor {
+    /// @dev Sell legs for `sellBps` of every representation's pro-rata slice; tokenOut is always USDG.
+    function basketVault_redeem(uint256 units, uint16 sellBps, uint256 minUsdgOut, address recipient) public asActor {
         uint256 supply = basket.totalSupply();
         uint256 n;
         LegExecutor.Leg[] memory tmp = new LegExecutor.Leg[](reps.length);
@@ -259,19 +259,19 @@ abstract contract BasketVaultHandler is Properties {
             uint256 slice = IERC20(reps[i]).balanceOf(address(basket)) * units / supply;
             uint256 sell = slice * sellBps / BPS;
             if (sell == 0) continue;
-            tmp[n++] = _leg(reps[i], address(usdt), sell, address(basket));
+            tmp[n++] = _leg(reps[i], address(usdg), sell, address(basket));
         }
         LegExecutor.Leg[] memory legs = new LegExecutor.Leg[](n);
         for (uint256 i = 0; i < n; i++) legs[i] = tmp[i];
 
         snapshotBefore();
         uint256 unitsBefore = basket.balanceOf(actor);
-        uint256 usdtBefore = usdt.balanceOf(recipient);
-        uint256 usdtOut = basket.redeem(units, minUsdtOut, legs, recipient, keccak256(abi.encode(units, sellBps)));
+        uint256 usdgBefore = usdg.balanceOf(recipient);
+        uint256 usdgOut = basket.redeem(units, minUsdgOut, legs, recipient, keccak256(abi.encode(units, sellBps)));
         snapshotAfter();
         _recordFeePaid();
-        _prop_feeExact(usdtOut + (stateAfter.feeRecipientUsdt - stateBefore.feeRecipientUsdt)); // gross proceeds
-        _prop_redeem(units, minUsdtOut, usdtOut, unitsBefore, usdtBefore, recipient);
+        _prop_feeExact(usdgOut + (stateAfter.feeRecipientUsdg - stateBefore.feeRecipientUsdg)); // gross proceeds
+        _prop_redeem(units, minUsdgOut, usdgOut, unitsBefore, usdgBefore, recipient);
     }
 
     function basketVault_redeemInKind(uint256 units, address recipient) public asActor {
@@ -285,17 +285,17 @@ abstract contract BasketVaultHandler is Properties {
     }
 
     /// @dev `to == address(0)` builds a sell-only migration (no buy leg).
-    function basketVault_migrate(uint256 sell, uint256 usdtOut, address from, address to, uint256 minShareGain)
+    function basketVault_migrate(uint256 sell, uint256 usdgOut, address from, address to, uint256 minShareGain)
         public
         asActor
     {
         LegExecutor.Leg[] memory legs;
         if (to == address(0)) {
-            legs = _legs1(_leg(from, address(usdt), sell, address(basket)));
+            legs = _legs1(_leg(from, address(usdg), sell, address(basket)));
         } else {
             legs = new LegExecutor.Leg[](2);
-            legs[0] = _leg(from, address(usdt), sell, address(basket));
-            legs[1] = _leg(address(usdt), to, usdtOut, address(basket));
+            legs[0] = _leg(from, address(usdg), sell, address(basket));
+            legs[1] = _leg(address(usdg), to, usdgOut, address(basket));
         }
         snapshotBefore();
         uint256 gain = basket.migrate(NVDA, legs, minShareGain, keccak256(abi.encode(sell, from, to)));
@@ -313,7 +313,7 @@ abstract contract BasketVaultHandler is Properties {
 
     function _basketVault_redeemInKindSkipping(uint256 units, address recipient, uint8 skipSeed) internal asActor {
         address[] memory skip = new address[](1);
-        skip[0] = skipSeed % 4 == 3 ? address(usdt) : reps[skipSeed % reps.length];
+        skip[0] = skipSeed % 4 == 3 ? address(usdg) : reps[skipSeed % reps.length];
         snapshotBefore();
         uint256 unitsBefore = basket.balanceOf(actor);
         basket.redeemInKindSkipping(units, recipient, skip);

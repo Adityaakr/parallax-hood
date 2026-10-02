@@ -16,7 +16,7 @@
           "internalType": "IStockRegistry"
         },
         {
-          "name": "usdt_",
+          "name": "usdg_",
           "type": "contract",
           "internalType": "IERC20"
         }
@@ -38,7 +38,7 @@
             "internalType": "bytes32"
           },
           {
-            "name": "usdtIn",
+            "name": "usdgIn",
             "type": "uint256",
             "internalType": "uint256"
           },
@@ -80,7 +80,7 @@
             "internalType": "uint256"
           },
           {
-            "name": "maxUsdtIn",
+            "name": "maxUsdgIn",
             "type": "uint256",
             "internalType": "uint256"
           },
@@ -107,12 +107,12 @@
             "internalType": "address"
           },
           {
-            "name": "perTxCapUsdt",
+            "name": "perTxCapUsdg",
             "type": "uint128",
             "internalType": "uint128"
           },
           {
-            "name": "dailyCapUsdt",
+            "name": "dailyCapUsdg",
             "type": "uint128",
             "internalType": "uint128"
           },
@@ -266,7 +266,7 @@
             "internalType": "uint256"
           },
           {
-            "name": "maxUsdtIn",
+            "name": "maxUsdgIn",
             "type": "uint256",
             "internalType": "uint256"
           },
@@ -298,7 +298,7 @@
             "internalType": "uint256"
           },
           {
-            "name": "minUsdtOut",
+            "name": "minUsdgOut",
             "type": "uint256",
             "internalType": "uint256"
           },
@@ -405,7 +405,7 @@
             "internalType": "bytes32"
           },
           {
-            "name": "usdtIn",
+            "name": "usdgIn",
             "type": "uint256",
             "internalType": "uint256"
           },
@@ -452,7 +452,7 @@
             "internalType": "uint256"
           },
           {
-            "name": "minUsdtOut",
+            "name": "minUsdgOut",
             "type": "uint256",
             "internalType": "uint256"
           },
@@ -491,7 +491,7 @@
           "internalType": "address"
         },
         {
-          "name": "usdt_",
+          "name": "usdg_",
           "type": "address",
           "internalType": "address"
         }

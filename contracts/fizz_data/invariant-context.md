@@ -5,12 +5,12 @@ measured in underlying shares (token amount × issuer ratio, 1e18-scaled), execu
 "legs" against an allowlisted venue trusting only balance deltas, packages positions into fixed
 shares-per-unit `BasketVault`s with an onchain backing check, and lets owners delegate to an agent key via
 `AgentMandate` (caps, expiry, allowlists, recipient = owner, execution floor vs reference price).
-USDT (18 dp) is the only settlement asset. A protocol fee (bps of USDT notional, ≤ 1 %) is charged on
-buys/sells/mints/USDT-redemptions, never on in-kind redemption or migration.
+USDG (18 dp) is the only settlement asset. A protocol fee (bps of USDG notional, ≤ 1 %) is charged on
+buys/sells/mints/USDG-redemptions, never on in-kind redemption or migration.
 
 Harness fixture (test/fizz/Base.sol): one basket `pxFUZZ` = 0.1 NVDA + 0.05 AAPL per unit (NVDA issuer cap
 80 %); NVDA has two representations (NVDAon keeper ratio 1.0037, NVDAB ERC-8056 multiplier 1.000778), AAPL one
-(AAPLB 1.0006); MockSwapTarget venue at fair prices (share price × ratio), 3 actors with 1M USDT each, a
+(AAPLB 1.0006); MockSwapTarget venue at fair prices (share price × ratio), 3 actors with 1M USDG each, a
 shared `agent` address, keeper/guardian/admin roles, fee 50 bps to `feeRecipient`. Environment handlers move
 venue prices ±20 %, drift ERC-8056 multipliers ±1 % or apply 10×/¼ splits, pause/blocklist mock tokens, set
 venue fees, and warp time (≤ 3 days); `stockRegistry_keeperRefresh` re-posts freshness data.
@@ -20,7 +20,7 @@ IMPORTANT environment facts for property design:
   break `backingOk()` without any vault action. Global "backing always holds" is therefore NOT a valid
   always-on property in this harness; the valid forms are "a vault call never *lowers* the backing ratio",
   "mint/migrate leave backing satisfied for what they touched", "a burn is pro-rata".
-- Vault USDT is a legitimate holding (migration residue, forfeited in-kind slices, donations).
+- Vault USDG is a legitimate holding (migration residue, forfeited in-kind slices, donations).
 - The router and the mandate contract hold only what was donated to them (ghosts.routerDonated / vaultDonated).
 - Stale attestations/prices/ratios block buys and agent trades (by design, invariant 7), never sells or exits.
 
@@ -35,14 +35,14 @@ Every invariant in plain English, where it is enforced, and the test that proves
 |---|-----------|-------------|-----------|
 | B1 | **Backing.** For every constituent `i`, `heldShares(i) >= ceil(totalSupply × sharesPerUnit(i) / 1e18)` after every state-changing call. `heldShares` sums `registry.sharesForTokens(rep, balanceOf(rep))` over every registered representation of the constituent, using live ERC-8056 multipliers or keeper-posted ratios. | `mint` → `_checkAllBacking()` after `_mint`; `migrate` → `_checkBacking(idx)`; `redeem`/`redeemInKind` remove at most the pro-rata slice (rounded down) so the ratio cannot fall. | `invariant_backingHolds` (handler-based, 128 runs × 32 calls, asserts after every successful vault call and at the end), `test_mint_revertsWhenUnderBacked`, `test_mint_revertsWithoutLegsForAConstituent`, `testFork_basketMintRedeemInKindAndRedeem` |
 | B1a | **A mint pays for itself.** The legs of a `mint` must deliver, for every constituent, at least `ceil(units × sharesPerUnit / 1e18)` shares *in that call*; empty legs revert. Slack other holders built up (rounding residue, a favourable migration, a donation) is never mintable against, so B1 cannot be satisfied by somebody else's cushion and the fee and buy-eligibility gate cannot be skipped with `legs = []`. (Audit F-1.) | `mint` → `NoLegs`, `_snapshotHoldings()` before legs, `_checkDelivered()` after `_mint` | `test_mint_cannotMintAgainstSlack`, `test_mint_revertsWithoutLegsForAConstituent` |
-| B2 | **Redeem in kind always works.** A holder can always burn units and receive the pro-rata slice of every representation and of vault USDT. No pause, oracle, registry freshness, guardian or admin can block it. | `redeemInKind` reads only `registry.representationsOf` (pure list) and token balances; no eligibility checks. `redeemInKindSkipping` lets a holder forfeit a slice whose issuer froze transfers. | `invariant_redeemInKindAlwaysWorks`, `test_redeemInKind_worksWhenEverythingIsStaleOrPaused`, `test_redeemInKind_skipFrozenToken`, `test_redeemInKind_distributesVaultUsdt` |
-| B3 | **Migrate is monotone.** Target constituent shares strictly increase by ≥ `minShareGain`; every other constituent's shares are unchanged or higher; vault USDT does not decrease; the new representation is buy-eligible; issuer caps hold. Anyone may call. | `migrate` snapshots all constituents and USDT before legs, checks all after. Legs may only spend USDT or the target constituent's representations. | `invariant_migrateMonotone`, `test_migrate_increasesShares`, `test_migrate_partialWithinCap`, `test_migrate_revertsWhenSharesDecrease`, `test_migrate_cannotDrainUsdt`, `test_migrate_cannotTouchOtherConstituents`, `test_migrate_respectsIssuerCap`, `testFork_migrate_ondoToBstock_gainsShares` (real pools: rejected when not accretive) |
+| B2 | **Redeem in kind always works.** A holder can always burn units and receive the pro-rata slice of every representation and of vault USDG. No pause, oracle, registry freshness, guardian or admin can block it. | `redeemInKind` reads only `registry.representationsOf` (pure list) and token balances; no eligibility checks. `redeemInKindSkipping` lets a holder forfeit a slice whose issuer froze transfers. | `invariant_redeemInKindAlwaysWorks`, `test_redeemInKind_worksWhenEverythingIsStaleOrPaused`, `test_redeemInKind_skipFrozenToken`, `test_redeemInKind_distributesVaultUsdg` |
+| B3 | **Migrate is monotone.** Target constituent shares strictly increase by ≥ `minShareGain`; every other constituent's shares are unchanged or higher; vault USDG does not decrease; the new representation is buy-eligible; issuer caps hold. Anyone may call. | `migrate` snapshots all constituents and USDG before legs, checks all after. Legs may only spend USDG or the target constituent's representations. | `invariant_migrateMonotone`, `test_migrate_increasesShares`, `test_migrate_partialWithinCap`, `test_migrate_revertsWhenSharesDecrease`, `test_migrate_cannotDrainUsdg`, `test_migrate_cannotTouchOtherConstituents`, `test_migrate_respectsIssuerCap`, `testFork_migrate_ondoToBstock_gainsShares` (real pools: rejected when not accretive) |
 | B4 | **Issuer caps.** When ≥ 2 representations of a constituent are buy-eligible, no single platform holds more than `maxIssuerBps` of that constituent's shares after `mint` or `migrate`. Redeems never fail because of caps. Single-eligible constituents skip the cap (UI shows "single issuer"). A platform already over the cap (concentration built while it was the only eligible one) does not brick the vault: a call that adds to it must strictly lower its share of the constituent, so diluting mints and migrations pass and the cap re-engages once met. (Audit F-4.) | `_checkIssuerCap(i, heldBefore, platformBefore)` against the pre-call snapshot | `test_mint_issuerCapEnforced`, `test_mint_issuerCapSkippedWhenSingleEligible`, `test_mint_overCapPlatformCanOnlyBeDiluted`, `test_migrate_respectsIssuerCap` |
 | B5 | **Redeem sells only the redeemer's slice.** Sell legs during `redeem` cannot spend more of any representation than the pro-rata slice for the burned units; unsold remainder is delivered in kind. | `remaining[]` accounting per token, `LegExceedsProRata` | `test_redeem_cannotSellMoreThanProRata`, `test_redeem_unsoldGoesInKind` |
-| B6 | **Mint never spends more than `maxUsdtIn`** even if the vault already holds USDT; leftover is refunded to the payer. | `OverSpent` check on the USDT delta; refund = `maxUsdtIn − spent` | `test_mint_overspendGuard`, `test_mint_refundsLeftover` |
+| B6 | **Mint never spends more than `maxUsdgIn`** even if the vault already holds USDG; leftover is refunded to the payer. | `OverSpent` check on the USDG delta; refund = `maxUsdgIn − spent` | `test_mint_overspendGuard`, `test_mint_refundsLeftover` |
 | B7 | **Supply equals holders' balances** (no hidden mint path). | ERC-20 | `invariant_supplyMatchesHolders` |
 
-Surplus shares above B1 (from rounding or cheap fills) stay in the vault and accrue pro rata to all holders; minters bound their cost with `maxUsdtIn`.
+Surplus shares above B1 (from rounding or cheap fills) stay in the vault and accrue pro rata to all holders; minters bound their cost with `maxUsdgIn`.
 
 **Corporate actions.** A split or reverse split moves a ratio outside `maxRatioStepBps`. For keeper-sourced ratios the keeper's post is rejected and the ratio goes stale → `isBuyEligible = false` → mints and migrations into that token fail until ADMIN calls `confirmRatio`. For ERC-8056 tokens the live multiplier is compared with the last checkpoint → same effect. Sells and in-kind redemption keep working (`test_corporateAction_pausesBuysUntilAdminConfirms`). A ratio *decrease* legitimately lowers `heldShares`; B1 is defined over vault operations and over the production direction of ratio drift (upward, dividends), which is what the invariant handler models.
 
@@ -52,7 +52,7 @@ Surplus shares above B1 (from rounding or cheap fills) stay in the vault and acc
 |---|-----------|-------------|-----------|
 | R1 | **Share-denominated slippage.** `buyShares` reverts unless `Σ sharesForTokens(tokenOut, received) >= minShares`. Token units never enter the check. | `InsufficientShares` | `test_buyShares_minSharesEnforced`, `test_buyShares_minShares_catchesVenueSkim`, `testFork_minShares_revertsWhenTooTight` |
 | R2 | **Only eligible representations of the requested underlying** can be bought; any registered representation can be sold. | `isBuyEligible` / `isSellEligible` + `underlyingOf` | `test_buyShares_rejectsBadLegs`, `test_buyShares_staleRepresentationExcluded`, `test_sellShares_deprecatedStillSellable` |
-| R3 | **The router keeps nothing of the caller's.** All output tokens go to `recipient`; the caller's unspent USDT (`usdtIn − spent − fee`) / unsold tokens (`tokenAmount − sold`) return to `msg.sender` in the same call. Refunds are scoped to what this call deposited: a balance that reaches the router by other means is not swept to the next caller. (Audit F-5/F-6.) | `OverSpent`/`OverSold` guards, refund = deposit − delta | `test_buyShares_refundsUnspent`, `test_sellShares_partialLegReturnsLeftover`, `test_refunds_doNotSweepStrayBalances`, balance asserts in every buy/sell test |
+| R3 | **The router keeps nothing of the caller's.** All output tokens go to `recipient`; the caller's unspent USDG (`usdgIn − spent − fee`) / unsold tokens (`tokenAmount − sold`) return to `msg.sender` in the same call. Refunds are scoped to what this call deposited: a balance that reaches the router by other means is not swept to the next caller. (Audit F-5/F-6.) | `OverSpent`/`OverSold` guards, refund = deposit − delta | `test_buyShares_refundsUnspent`, `test_sellShares_partialLegReturnsLeftover`, `test_refunds_doNotSweepStrayBalances`, balance asserts in every buy/sell test |
 | R5 | **Receipts never block a trade.** The ratio/share telemetry on a `RouteReceipt` comes from a live ERC-8056 view; it is read in a try/catch so a representation whose ratio view reverts stays sellable and redeemable (the receipt carries zeros). | `ReceiptEmitter._emitRouteReceipt` | covered by the sell/redeem suites; the failure mode has no in-repo token that reverts on `uiMultiplier()` |
 | R4 | **One `RouteReceipt` per leg** with `quoteHash`, ratio and attestation timestamp at execution time. | `ReceiptEmitter` | `test_buyShares_emitsReceipt`, `test_sellShares` |
 
@@ -74,15 +74,15 @@ Surplus shares above B1 (from rounding or cheap fills) stay in the vault and acc
 | S2 | Buy eligibility requires: registered, active, buys not paused, fresh ratio (≤ `maxRatioAge` for keeper; within step of checkpoint for ERC-8056), fresh platform attestation (≤ `maxAttestationAge`). Sell eligibility requires only registration. | `isBuyEligible` / `isSellEligible` | `test_isBuyEligible_freshness`, `test_guardianPausesBuysOnly`, `test_setRepresentationActive` |
 | S3 | Attestation timestamps are monotone and never in the future. | `postAttestation` | `test_postAttestation` |
 | S4 | GUARDIAN can only pause buys. | role-gated `setBuysPaused` only | `test_guardianPausesBuysOnly` |
-| S5 | The protocol fee is a USDT flow only: charged on buys, sells, mints and USDT redemptions as bps of notional, capped at `MAX_FEE_BPS` (1 %) in code, ADMIN-set; it never touches shares or backing and is never charged on in-kind redemption or migration, so it cannot block the escape hatch (B2) or the backing invariant (B1). | `StockRegistry.setFee` (cap), `ShareRouter._chargeFee`, `BasketVault._chargeFee` (not called from `redeemInKind`/`migrate`) | `FeeTest.*` (7 tests), `BasketVaultInvariants` run with the fee on |
+| S5 | The protocol fee is a USDG flow only: charged on buys, sells, mints and USDG redemptions as bps of notional, capped at `MAX_FEE_BPS` (1 %) in code, ADMIN-set; it never touches shares or backing and is never charged on in-kind redemption or migration, so it cannot block the escape hatch (B2) or the backing invariant (B1). | `StockRegistry.setFee` (cap), `ShareRouter._chargeFee`, `BasketVault._chargeFee` (not called from `redeemInKind`/`migrate`) | `FeeTest.*` (7 tests), `BasketVaultInvariants` run with the fee on |
 
 ## Agent mandates (`AgentMandate`)
 
 | # | Invariant | Enforced by | Proven by |
 |---|-----------|-------------|-----------|
-| A1 | **The agent never receives assets.** Recipient is hardcoded to `owner`; refunds go to `owner`; the mandate contract holds nothing of a call's between calls. `_settle` refunds and counts only the balance gained since the call's pre-pull snapshot (capped at the authorized amount), so USDT that reaches the shared contract by other means is neither swept to the next owner nor able to zero their window spend. (Audit F-3.) | `agentBuyShares` / `agentMintBasket` / `_settle(m, authorized, balanceBefore)` | `invariant_agentNeverReceivesAssets`, `test_agentBuy_outputGoesToOwner`, `test_agent_cannotRedirectRecipient`, `test_settle_doesNotSweepStrayBalance`, `testFork_agentMandateBuy` |
-| A5 | **The agent cannot buy badly on purpose.** What actually left the owner in a call (USDT delta, fee included) must have bought at least `spent × (1 − maxSlippageBps) / referencePrice` shares (`agentBuyShares`) or that many units' worth (`agentMintBasket`, unit valued at the constituents' reference prices). `maxSlippageBps` is set by the owner at creation (1–2000). A missing or stale reference price (`maxPriceAge`) blocks agent buys only — never the owner's own trades or exits. Closes the path where the agent supplies dust `minShares`/`units` and leg calldata that routes the swap output to itself. (Audit F-2.) | `sharesFloor` / `unitsFloor` checked after execution against the measured spend | `test_agentBuy_cannotDivertOutputBelowFloor`, `test_agentBuy_blockedByStaleReferencePrice`, `test_create_rejectsBadSlippage`, `invariant_agentNeverReceivesAssets` (handler sizes budgets to fair value; overspends are rejected) |
-| A2 | No single authorization above `perTxCapUsdt`; no 24h window above `dailyCapUsdt`. Window starts at the first spend and resets after 24h. | `_authorize` | `invariant_capsNeverExceeded`, `test_agentBuy_perTxCap`, `test_agentBuy_dailyCapAndWindowReset`, `test_agentMintBasket_capAppliesToMaxUsdt` |
+| A1 | **The agent never receives assets.** Recipient is hardcoded to `owner`; refunds go to `owner`; the mandate contract holds nothing of a call's between calls. `_settle` refunds and counts only the balance gained since the call's pre-pull snapshot (capped at the authorized amount), so USDG that reaches the shared contract by other means is neither swept to the next owner nor able to zero their window spend. (Audit F-3.) | `agentBuyShares` / `agentMintBasket` / `_settle(m, authorized, balanceBefore)` | `invariant_agentNeverReceivesAssets`, `test_agentBuy_outputGoesToOwner`, `test_agent_cannotRedirectRecipient`, `test_settle_doesNotSweepStrayBalance`, `testFork_agentMandateBuy` |
+| A5 | **The agent cannot buy badly on purpose.** What actually left the owner in a call (USDG delta, fee included) must have bought at least `spent × (1 − maxSlippageBps) / referencePrice` shares (`agentBuyShares`) or that many units' worth (`agentMintBasket`, unit valued at the constituents' reference prices). `maxSlippageBps` is set by the owner at creation (1–2000). A missing or stale reference price (`maxPriceAge`) blocks agent buys only — never the owner's own trades or exits. Closes the path where the agent supplies dust `minShares`/`units` and leg calldata that routes the swap output to itself. (Audit F-2.) | `sharesFloor` / `unitsFloor` checked after execution against the measured spend | `test_agentBuy_cannotDivertOutputBelowFloor`, `test_agentBuy_blockedByStaleReferencePrice`, `test_create_rejectsBadSlippage`, `invariant_agentNeverReceivesAssets` (handler sizes budgets to fair value; overspends are rejected) |
+| A2 | No single authorization above `perTxCapUsdg`; no 24h window above `dailyCapUsdg`. Window starts at the first spend and resets after 24h. | `_authorize` | `invariant_capsNeverExceeded`, `test_agentBuy_perTxCap`, `test_agentBuy_dailyCapAndWindowReset`, `test_agentMintBasket_capAppliesToMaxUsdg` |
 | A3 | Only the designated agent can act; only allowlisted underlyings/baskets; not after expiry; not after revocation (instant). | `_authorize`, allowlists, `revoke` | `invariant_revokeAndExpiryFinal`, `test_agentBuy_onlyAgent`, `test_agentBuy_underlyingNotAllowed`, `test_agentMintBasket_notAllowed`, `test_agentBuy_expiry`, `test_revoke_isInstant` |
 | A4 | Only the owner can revoke or edit allowlists. | `NotOwner` | `test_revoke_isInstant`, `test_setAllowed_onlyOwner` |
 
@@ -109,7 +109,7 @@ Run everything: `cd contracts && forge test` (unit + fuzz + invariant) and `FOUN
 Per-call preconditions. Heading IDs below (`G-N`) are anchor targets from x-ray.md attack surfaces.
 
 #### G-1
-`if (admin == address(0) || usdt_ == address(0)) revert ZeroAddress()` · `StockRegistry.sol:66` · a registry with no admin or no settlement token can never be configured or used.
+`if (admin == address(0) || usdg_ == address(0)) revert ZeroAddress()` · `StockRegistry.sol:66` · a registry with no admin or no settlement token can never be configured or used.
 
 #### G-2
 `if (_reps[token].exists) revert AlreadyRegistered(token)` · `StockRegistry.sol:91` · a representation's underlying/platform/ratio source is immutable once registered; re-registration cannot re-point a token.
@@ -118,7 +118,7 @@ Per-call preconditions. Heading IDs below (`G-N`) are anchor targets from x-ray.
 `if (initialRatio == 0) revert ZeroRatio()` · `StockRegistry.sol:92` · a zero ratio would make `tokensForShares` divide by zero and `heldShares` read as zero backing.
 
 #### G-4
-`if (feeBps_ > MAX_FEE_BPS) revert FeeTooHigh(feeBps_, MAX_FEE_BPS)` · `StockRegistry.sol:126` · admin cannot set a fee above 1 %; bounds the value ADMIN can skim from every USDT flow.
+`if (feeBps_ > MAX_FEE_BPS) revert FeeTooHigh(feeBps_, MAX_FEE_BPS)` · `StockRegistry.sol:126` · admin cannot set a fee above 1 %; bounds the value ADMIN can skim from every USDG flow.
 
 #### G-5
 `if (ratio == 0) revert ZeroRatio()` · `StockRegistry.sol:150` · `confirmRatio` cannot zero a ratio (same division/backing hazard as G-3).
@@ -160,7 +160,7 @@ Per-call preconditions. Heading IDs below (`G-N`) are anchor targets from x-ray.
 `return ShareMath.stepBps(p.ratio, live) <= maxRatioStepBps` · `StockRegistry.sol:291` · an ERC-8056 token whose live multiplier drifted > 5 % from its checkpoint is not buy-eligible.
 
 #### G-18
-`if (usdtIn == 0) revert ZeroAmount()` · `ShareRouter.sol:59` · rejects empty buys before any transfer.
+`if (usdgIn == 0) revert ZeroAmount()` · `ShareRouter.sol:59` · rejects empty buys before any transfer.
 
 #### G-19
 `if (legs.length == 0) revert NoLegs()` · `ShareRouter.sol:61,97` · a buy/sell must execute at least one leg (no silent no-op that still charges).
@@ -178,13 +178,13 @@ Per-call preconditions. Heading IDs below (`G-N`) are anchor targets from x-ray.
 `if (registry.underlyingOf(representation) != underlyingId) revert WrongUnderlying(...)` · `ShareRouter.sol:99`, `:148` · a leg cannot buy or sell a token of a different stock than the one named in the call.
 
 #### G-24
-`if (usdtOut < minUsdtOut) revert InsufficientUsdtOut(usdtOut, minUsdtOut)` · `ShareRouter.sol:111`, `BasketVault.sol:165` · net-of-fee proceeds must meet the caller's minimum.
+`if (usdgOut < minUsdgOut) revert InsufficientUsdgOut(usdgOut, minUsdgOut)` · `ShareRouter.sol:111`, `BasketVault.sol:165` · net-of-fee proceeds must meet the caller's minimum.
 
 #### G-25
 `if (!registry.isAllowedTarget(leg.target)) revert TargetNotAllowed(leg.target)` · `ShareRouter.sol:145,170`, `BasketVault.sol:105,152,242` · untrusted calldata can only reach ADMIN-allowlisted swap targets.
 
 #### G-26
-`if (leg.tokenIn != address(usdt)) revert LegTokenInMustBeUsdt(leg.tokenIn)` · `ShareRouter.sol:146`, `BasketVault.sol:106` · buy legs can only spend USDT the caller supplied, never a held representation.
+`if (leg.tokenIn != address(usdg)) revert LegTokenInMustBeUsdg(leg.tokenIn)` · `ShareRouter.sol:146`, `BasketVault.sol:106` · buy legs can only spend USDG the caller supplied, never a held representation.
 
 #### G-27
 `if (!registry.isBuyEligible(leg.tokenOut)) revert NotBuyEligible(leg.tokenOut)` · `ShareRouter.sol:147`, `BasketVault.sol:107,251` · fresh-ratio / fresh-attestation / not-paused gate on every acquired token.
@@ -214,13 +214,13 @@ Per-call preconditions. Heading IDs below (`G-N`) are anchor targets from x-ray.
 `if (_constituentIndexPlusOne[c.underlyingId] != 0) revert DuplicateConstituent(...)` · `BasketVault.sol:80` · one constituent per underlying, so `heldShares(i)` is not double-counted.
 
 #### G-36
-`if (units == 0 || maxUsdtIn == 0) revert ZeroAmount()` · `BasketVault.sol:97` · a mint must create units and bring USDT.
+`if (units == 0 || maxUsdgIn == 0) revert ZeroAmount()` · `BasketVault.sol:97` · a mint must create units and bring USDG.
 
 #### G-37
 `if (_constituentIndexPlusOne[uid] == 0) revert NotAConstituent(leg.tokenOut)` · `BasketVault.sol:109` · a mint leg can only acquire a constituent's token (the vault never holds a stock it does not owe).
 
 #### G-38
-`if (usdtSpent > maxUsdtIn) revert OverSpent(usdtSpent, maxUsdtIn)` · `BasketVault.sol:116` · total spend across legs is bounded by what the minter sent.
+`if (usdgSpent > maxUsdgIn) revert OverSpent(usdgSpent, maxUsdgIn)` · `BasketVault.sol:116` · total spend across legs is bounded by what the minter sent.
 
 #### G-39
 `if (held < req) revert BackingViolated(...)` · `BasketVault.sol:360` (via `_checkAllBacking` at `:119`, `_checkBacking` at `:270`) · after a mint or migration every constituent's held shares cover `totalSupply × sharesPerUnit`.
@@ -232,7 +232,7 @@ Per-call preconditions. Heading IDs below (`G-N`) are anchor targets from x-ray.
 `if (have < units) revert InsufficientUnits(have, units)` · `BasketVault.sol:144,203` · a holder can only redeem units they own.
 
 #### G-42
-`if (leg.tokenOut != address(usdt)) revert LegTokenOutMustBeUsdt(leg.tokenOut)` · `BasketVault.sol:153` · a redemption leg can only sell into USDT.
+`if (leg.tokenOut != address(usdg)) revert LegTokenOutMustBeUsdg(leg.tokenOut)` · `BasketVault.sol:153` · a redemption leg can only sell into USDG.
 
 #### G-43
 `if (leg.maxIn > remaining[j]) revert LegExceedsProRata(...)` · `BasketVault.sol:156` · a redeemer's legs can sell at most their pro-rata slice of each held token.
@@ -241,10 +241,10 @@ Per-call preconditions. Heading IDs below (`G-N`) are anchor targets from x-ray.
 `if (afterTarget <= before[idx]) revert InsufficientShareGain(...)` / `if (shareGain < minShareGain) ...` · `BasketVault.sol:259-261` · a migration must strictly increase the target constituent's shares by ≥ `minShareGain`.
 
 #### G-45
-`if (a < before[i]) revert ConstituentDecreased(...)` / `if (usdtAfter < usdtBefore) revert UsdtDecreased(...)` · `BasketVault.sol:265,268` · a migration may not decrease any other constituent nor the vault's USDT.
+`if (a < before[i]) revert ConstituentDecreased(...)` / `if (usdgAfter < usdgBefore) revert UsdgDecreased(...)` · `BasketVault.sol:265,268` · a migration may not decrease any other constituent nor the vault's USDG.
 
 #### G-46
-`if (m.agent != msg.sender) revert NotAgent(); ... if (amount > m.perTxCapUsdt) ...; if (amount > remaining) ...` · `AgentMandate.sol:194-206` · only the named agent, while active and unexpired, within per-tx and rolling-24h caps.
+`if (m.agent != msg.sender) revert NotAgent(); ... if (amount > m.perTxCapUsdg) ...; if (amount > remaining) ...` · `AgentMandate.sol:194-206` · only the named agent, while active and unexpired, within per-tx and rolling-24h caps.
 
 ---
 
@@ -262,7 +262,7 @@ Inferred invariants are derived from structural analysis of the source code. Eac
 
 **Derivation** — guard-lift: `if (feeBps_ > MAX_FEE_BPS) revert FeeTooHigh` at `StockRegistry.sol:126`; write sites of `feeBps`: `setFee` only (`:127`).
 
-**If violated** — ADMIN could set a confiscatory fee; the cap makes "at most 1 % per USDT flow" a code guarantee.
+**If violated** — ADMIN could set a confiscatory fee; the cap makes "at most 1 % per USDG flow" a code guarantee.
 
 ---
 
@@ -319,13 +319,13 @@ Inferred invariants are derived from structural analysis of the source code. Eac
 ## AGGREGATE_VARIABLES (grep)
 src/AgentMandate.sol:31:        uint128 spentInWindow;
 src/AgentMandate.sol:115:            spentInWindow: 0,
-src/AgentMandate.sol:243:        return m.dailyCapUsdt - m.spentInWindow;
+src/AgentMandate.sol:243:        return m.dailyCapUsdg - m.spentInWindow;
 src/AgentMandate.sol:258:            m.spentInWindow = 0;
-src/AgentMandate.sol:260:        uint128 remaining = m.dailyCapUsdt - m.spentInWindow;
+src/AgentMandate.sol:260:        uint128 remaining = m.dailyCapUsdg - m.spentInWindow;
 src/AgentMandate.sol:281:        m.spentInWindow += uint128(spent);
 src/BasketVault.sol:18:///           - Backing: heldShares(i) >= totalSupply * sharesPerUnit(i) / 1e18 for every i, after every call.
 src/BasketVault.sol:162:            _proRataHoldings(units, totalSupply());
-src/BasketVault.sol:229:        (address[] memory tokens, uint256[] memory amounts, uint256 usdtShare) = _proRataHoldings(units, totalSupply());
+src/BasketVault.sol:229:        (address[] memory tokens, uint256[] memory amounts, uint256 usdgShare) = _proRataHoldings(units, totalSupply());
 src/BasketVault.sol:260:            before[i] = heldShares(i);
 src/BasketVault.sol:269:        uint256 afterTarget = heldShares(idx);
 src/BasketVault.sol:275:            uint256 a = heldShares(i);
@@ -352,8 +352,8 @@ src/libraries/ShareMath.sol:31:        return Math.mulDiv(balance, units, totalS
 mint/redeem/redeemInKind (BasketVault), buyShares/sellShares (ShareRouter), createMandate/revoke (AgentMandate), migrate (sell rep A → buy rep B, same constituent), postRatio/confirmRatio/checkpointRatio (StockRegistry), setBuysPaused(true/false)
 
 ## CONVERSION_FUNCTIONS
-src/AgentMandate.sol:220:    function sharesFloor(uint256 id, bytes32 underlyingId, uint256 usdtSpent) public view returns (uint256) {
-src/AgentMandate.sol:228:    function unitsFloor(uint256 id, address basket, uint256 usdtSpent) public view returns (uint256) {
+src/AgentMandate.sol:220:    function sharesFloor(uint256 id, bytes32 underlyingId, uint256 usdgSpent) public view returns (uint256) {
+src/AgentMandate.sol:228:    function unitsFloor(uint256 id, address basket, uint256 usdgSpent) public view returns (uint256) {
 src/BasketVault.sol:322:    function heldShares(uint256 i) public view override returns (uint256 total) {
 src/BasketVault.sol:330:    function requiredShares(uint256 i) public view returns (uint256) {
 src/StockRegistry.sol:333:    function sharesForTokens(address token, uint256 amount) external view override returns (uint256) {
@@ -403,7 +403,7 @@ src/mocks/MockSwapTarget.sol:61:    function setMode(Mode m, bytes calldata data
 
 
 ## Harness files already in place (read them; do not duplicate the specific properties already implemented)
-- test/fizz/Base.sol (Ghosts: routerDonated, vaultDonated, freeMintSucceeded, feePaid; helpers _leg/_mintLegs/_usdtForShares/_notional/_sharesHeld)
-- test/fizz/Snapshots.sol (State: supply, heldShares[2], vaultUsdt, routerUsdt, mandateUsdt, feeRecipientUsdt, agentUsdt, agentUnits, backingOk)
+- test/fizz/Base.sol (Ghosts: routerDonated, vaultDonated, freeMintSucceeded, feePaid; helpers _leg/_mintLegs/_usdgForShares/_notional/_sharesHeld)
+- test/fizz/Snapshots.sol (State: supply, heldShares[2], vaultUsdg, routerUsdg, mandateUsdg, feeRecipientUsdg, agentUsdg, agentUnits, backingOk)
 - test/fizz/Properties.sol (specific properties _prop_* already wired from every handler; NO global property_* yet)
 - test/fizz/handlers/{ShareRouter,BasketVault,AgentMandate,StockRegistry}Handler.sol

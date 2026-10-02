@@ -30,18 +30,18 @@ interface IBasketVault {
 
     function mint(
         uint256 units,
-        uint256 maxUsdtIn,
+        uint256 maxUsdgIn,
         LegExecutor.Leg[] calldata legs,
         address recipient,
         bytes32 quoteHash
-    ) external returns (uint256 usdtSpent);
+    ) external returns (uint256 usdgSpent);
     function redeem(
         uint256 units,
-        uint256 minUsdtOut,
+        uint256 minUsdgOut,
         LegExecutor.Leg[] calldata legs,
         address recipient,
         bytes32 quoteHash
-    ) external returns (uint256 usdtOut);
+    ) external returns (uint256 usdgOut);
     function redeemInKind(uint256 units, address recipient) external;
     function migrate(bytes32 underlyingId, LegExecutor.Leg[] calldata legs, uint256 minShareGain, bytes32 quoteHash)
         external

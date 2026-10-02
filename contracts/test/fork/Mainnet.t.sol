@@ -42,11 +42,11 @@ interface ISmartRouter {
 }
 
 /// @title Mainnet fork tests
-/// @notice Runs against real BSC state: real bStock / Ondo tokens, real PancakeSwap v3 pools, real USDT.
+/// @notice Runs against real BSC state: real bStock / Ondo tokens, real PancakeSwap v3 pools, real USDG.
 ///         Opt-in: `forge test --match-path 'test/fork/*' --fork-url $BSC_RPC_URL`.
 contract MainnetForkTest is Test {
     // --- real addresses (docs/recon.md) ---
-    address constant USDT = 0x55d398326f99059fF775485246999027B3197955;
+    address constant USDG = 0x55d398326f99059fF775485246999027B3197955;
     address constant NVDAB = 0x02Fca66C1D1aFB4E2A7884261eB00F63598a7436;
     address constant AAPLB = 0x431a3BEE82E2ca41e49895CbECE5bB0F76A89b7A;
     address constant NVDAON = 0xA9eE28C80f960B889dFbd1902055218cBa016F75;
@@ -76,10 +76,10 @@ contract MainnetForkTest is Test {
         string memory rpc = vm.envOr("BSC_RPC_URL", string("https://bsc-dataseed.binance.org"));
         vm.createSelectFork(rpc);
 
-        registry = new StockRegistry(admin, USDT);
+        registry = new StockRegistry(admin, USDG);
         router = new ShareRouter(registry);
         factory = new BasketFactory(registry, admin);
-        mandate = new AgentMandate(router, registry, IERC20(USDT));
+        mandate = new AgentMandate(router, registry, IERC20(USDG));
 
         vm.startPrank(admin);
         registry.grantRole(registry.KEEPER_ROLE(), keeper);
@@ -104,7 +104,7 @@ contract MainnetForkTest is Test {
         registry.postAttestation(ONDO, uint64(block.timestamp));
         vm.stopPrank();
 
-        deal(USDT, alice, 10_000e18);
+        deal(USDG, alice, 10_000e18);
     }
 
     // ---- helpers ----
@@ -161,19 +161,19 @@ contract MainnetForkTest is Test {
     }
 
     function testFork_buyNVDA_viaBstockPool_shareDenominated() public {
-        uint256 usdtIn = 100e18;
-        uint256 quoted = _quote(USDT, NVDAB, usdtIn, 500);
+        uint256 usdgIn = 100e18;
+        uint256 quoted = _quote(USDG, NVDAB, usdgIn, 500);
         uint256 ratio = IERC8056(NVDAB).uiMultiplier();
         uint256 expectedShares = quoted * ratio / WAD;
         uint256 minShares = expectedShares * 9_950 / 10_000; // 50 bps
 
         vm.startPrank(alice);
-        IERC20(USDT).approve(address(router), usdtIn);
+        IERC20(USDG).approve(address(router), usdgIn);
         uint256 shares = router.buyShares(
             NVDA,
-            usdtIn,
+            usdgIn,
             minShares,
-            _one(_leg(USDT, NVDAB, 500, usdtIn, 0, address(router))),
+            _one(_leg(USDG, NVDAB, 500, usdgIn, 0, address(router))),
             alice,
             keccak256("fork-buy")
         );
@@ -182,49 +182,49 @@ contract MainnetForkTest is Test {
         assertGe(shares, minShares);
         assertEq(IERC20(NVDAB).balanceOf(alice), quoted);
         assertEq(IERC20(NVDAB).balanceOf(address(router)), 0);
-        assertEq(IERC20(USDT).balanceOf(address(router)), 0);
+        assertEq(IERC20(USDG).balanceOf(address(router)), 0);
         console2.log("NVDAB tokens", quoted, "shares", shares);
-        console2.log("cost per share (1e18 USD)", usdtIn * WAD / shares);
+        console2.log("cost per share (1e18 USD)", usdgIn * WAD / shares);
     }
 
     function testFork_minShares_revertsWhenTooTight() public {
-        uint256 usdtIn = 100e18;
-        uint256 quoted = _quote(USDT, NVDAB, usdtIn, 500);
+        uint256 usdgIn = 100e18;
+        uint256 quoted = _quote(USDG, NVDAB, usdgIn, 500);
         uint256 shares = quoted * IERC8056(NVDAB).uiMultiplier() / WAD;
         vm.startPrank(alice);
-        IERC20(USDT).approve(address(router), usdtIn);
+        IERC20(USDG).approve(address(router), usdgIn);
         vm.expectRevert(abi.encodeWithSelector(ShareRouter.InsufficientShares.selector, shares, shares + 1));
         router.buyShares(
-            NVDA, usdtIn, shares + 1, _one(_leg(USDT, NVDAB, 500, usdtIn, 0, address(router))), alice, keccak256("x")
+            NVDA, usdgIn, shares + 1, _one(_leg(USDG, NVDAB, 500, usdgIn, 0, address(router))), alice, keccak256("x")
         );
         vm.stopPrank();
     }
 
-    function _mintLegs(uint256 units) internal returns (LegExecutor.Leg[] memory legs, uint256 maxUsdt) {
+    function _mintLegs(uint256 units) internal returns (LegExecutor.Leg[] memory legs, uint256 maxUsdg) {
         // required shares per constituent, converted to tokens, priced with the quoter (+50 bps headroom)
         uint256 nvdaTokens = registry.tokensForShares(NVDAB, units * 0.01e18 / WAD + 1);
         uint256 aaplTokens = registry.tokensForShares(AAPLB, units * 0.01e18 / WAD + 1);
-        // find USDT amounts by quoting a reference size and scaling (fine for small clips)
-        uint256 refUsdt = 100e18;
-        uint256 nvdaPerRef = _quote(USDT, NVDAB, refUsdt, 500);
-        uint256 aaplPerRef = _quote(USDT, AAPLB, refUsdt, 2500);
-        uint256 uN = refUsdt * nvdaTokens / nvdaPerRef * 10_050 / 10_000 + 1;
-        uint256 uA = refUsdt * aaplTokens / aaplPerRef * 10_050 / 10_000 + 1;
+        // find USDG amounts by quoting a reference size and scaling (fine for small clips)
+        uint256 refUsdg = 100e18;
+        uint256 nvdaPerRef = _quote(USDG, NVDAB, refUsdg, 500);
+        uint256 aaplPerRef = _quote(USDG, AAPLB, refUsdg, 2500);
+        uint256 uN = refUsdg * nvdaTokens / nvdaPerRef * 10_050 / 10_000 + 1;
+        uint256 uA = refUsdg * aaplTokens / aaplPerRef * 10_050 / 10_000 + 1;
         legs = new LegExecutor.Leg[](2);
-        legs[0] = _leg(USDT, NVDAB, 500, uN, 0, address(basket));
-        legs[1] = _leg(USDT, AAPLB, 2500, uA, 0, address(basket));
-        maxUsdt = uN + uA;
+        legs[0] = _leg(USDG, NVDAB, 500, uN, 0, address(basket));
+        legs[1] = _leg(USDG, AAPLB, 2500, uA, 0, address(basket));
+        maxUsdg = uN + uA;
     }
 
     function testFork_basketMintRedeemInKindAndRedeem() public {
-        (LegExecutor.Leg[] memory legs, uint256 maxUsdt) = _mintLegs(10e18);
+        (LegExecutor.Leg[] memory legs, uint256 maxUsdg) = _mintLegs(10e18);
         vm.startPrank(alice);
-        IERC20(USDT).approve(address(basket), maxUsdt);
-        uint256 spent = basket.mint(10e18, maxUsdt, legs, alice, keccak256("fork-mint"));
+        IERC20(USDG).approve(address(basket), maxUsdg);
+        uint256 spent = basket.mint(10e18, maxUsdg, legs, alice, keccak256("fork-mint"));
         vm.stopPrank();
         assertEq(basket.balanceOf(alice), 10e18);
         assertTrue(basket.backingOk());
-        console2.log("mint 10 units spent USDT (1e18)", spent);
+        console2.log("mint 10 units spent USDG (1e18)", spent);
         IBasketVault.ConstituentView[] memory comp = basket.composition();
         assertGe(comp[0].heldShares, comp[0].requiredShares);
         assertGe(comp[1].heldShares, comp[1].requiredShares);
@@ -236,20 +236,20 @@ contract MainnetForkTest is Test {
         assertGt(IERC20(AAPLB).balanceOf(alice), 0);
         assertTrue(basket.backingOk());
 
-        // redeem remaining to USDT through the pools
+        // redeem remaining to USDG through the pools
         uint256 supply = basket.totalSupply();
         uint256 nB = IERC20(NVDAB).balanceOf(address(basket)) * 5e18 / supply;
         uint256 aB = IERC20(AAPLB).balanceOf(address(basket)) * 5e18 / supply;
         LegExecutor.Leg[] memory sells = new LegExecutor.Leg[](2);
-        sells[0] = _leg(NVDAB, USDT, 500, nB, 0, address(basket));
-        sells[1] = _leg(AAPLB, USDT, 2500, aB, 0, address(basket));
-        uint256 before = IERC20(USDT).balanceOf(alice);
+        sells[0] = _leg(NVDAB, USDG, 500, nB, 0, address(basket));
+        sells[1] = _leg(AAPLB, USDG, 2500, aB, 0, address(basket));
+        uint256 before = IERC20(USDG).balanceOf(alice);
         vm.prank(alice);
         uint256 out = basket.redeem(5e18, 0, sells, alice, keccak256("fork-redeem"));
         assertGt(out, 0);
-        assertEq(IERC20(USDT).balanceOf(alice), before + out);
+        assertEq(IERC20(USDG).balanceOf(alice), before + out);
         assertEq(basket.totalSupply(), 0);
-        console2.log("redeem 5 units USDT out (1e18)", out);
+        console2.log("redeem 5 units USDG out (1e18)", out);
     }
 
     function testFork_migrate_ondoToBstock_gainsShares() public {
@@ -261,12 +261,12 @@ contract MainnetForkTest is Test {
 
         // sell NVDAon into its 1 % pool, buy NVDAB with the proceeds
         uint256 sell = 0.05e18;
-        uint256 usdtOut = _quote(NVDAON, USDT, sell, 10_000);
-        uint256 nvdabOut = _quote(USDT, NVDAB, usdtOut, 500);
+        uint256 usdgOut = _quote(NVDAON, USDG, sell, 10_000);
+        uint256 nvdabOut = _quote(USDG, NVDAB, usdgOut, 500);
         uint256 sharesAfter = nvdabOut * IERC8056(NVDAB).uiMultiplier() / WAD;
         LegExecutor.Leg[] memory legs = new LegExecutor.Leg[](2);
-        legs[0] = _leg(NVDAON, USDT, 10_000, sell, 0, address(basket));
-        legs[1] = _leg(USDT, NVDAB, 500, usdtOut, 0, address(basket));
+        legs[0] = _leg(NVDAON, USDG, 10_000, sell, 0, address(basket));
+        legs[1] = _leg(USDG, NVDAB, 500, usdgOut, 0, address(basket));
         console2.log("shares before (ondo)", before, "shares after (bstock)", sharesAfter);
 
         if (sharesAfter > before) {
@@ -287,20 +287,20 @@ contract MainnetForkTest is Test {
         us[0] = NVDA;
         address[] memory bs = new address[](0);
         vm.startPrank(alice);
-        IERC20(USDT).approve(address(mandate), type(uint256).max);
+        IERC20(USDG).approve(address(mandate), type(uint256).max);
         uint256 id = mandate.createMandate(agent, 50e18, 100e18, uint64(block.timestamp + 1 days), 300, us, bs);
         vm.stopPrank();
 
-        uint256 usdtIn = 50e18;
-        uint256 quoted = _quote(USDT, NVDAB, usdtIn, 500);
+        uint256 usdgIn = 50e18;
+        uint256 quoted = _quote(USDG, NVDAB, usdgIn, 500);
         uint256 minShares = quoted * IERC8056(NVDAB).uiMultiplier() / WAD * 9_950 / 10_000;
         vm.prank(agent);
         uint256 shares = mandate.agentBuyShares(
             id,
             NVDA,
-            usdtIn,
+            usdgIn,
             minShares,
-            _one(_leg(USDT, NVDAB, 500, usdtIn, 0, address(router))),
+            _one(_leg(USDG, NVDAB, 500, usdgIn, 0, address(router))),
             keccak256("fork-agent")
         );
         assertGe(shares, minShares);
@@ -310,12 +310,12 @@ contract MainnetForkTest is Test {
         // second buy exceeds the daily cap (50 spent, 100 cap, per-tx 50 -> a 51 fails per-tx, a 50 then 1 more fails daily)
         vm.prank(agent);
         mandate.agentBuyShares(
-            id, NVDA, 50e18, 0, _one(_leg(USDT, NVDAB, 500, 50e18, 0, address(router))), keccak256("fork-agent-2")
+            id, NVDA, 50e18, 0, _one(_leg(USDG, NVDAB, 500, 50e18, 0, address(router))), keccak256("fork-agent-2")
         );
         vm.prank(agent);
         vm.expectRevert(abi.encodeWithSelector(AgentMandate.DailyCapExceeded.selector, 1e18, 0));
         mandate.agentBuyShares(
-            id, NVDA, 1e18, 0, _one(_leg(USDT, NVDAB, 500, 1e18, 0, address(router))), keccak256("fork-agent-3")
+            id, NVDA, 1e18, 0, _one(_leg(USDG, NVDAB, 500, 1e18, 0, address(router))), keccak256("fork-agent-3")
         );
     }
 }

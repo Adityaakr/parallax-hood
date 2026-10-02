@@ -20,7 +20,7 @@ contract FoundryTester is Test, Handlers {
     // forge test --match-test test_sequence -vvv
     function test_sequence() public {
         // smoke: every primary path once, at fair execution
-        shareRouter_buyShares_clamped(1_000e18, 1, 0, actor);
+        shareRouter_buyShares_clamped(1_000e6, 1, 0, actor);
         shareRouter_sellShares_clamped(1e18, 1, true, actor);
         basketVault_mint_clamped(5e18, 7_000, actor);
         basketVault_mint_underDelivered(1e18, 0);
@@ -29,8 +29,8 @@ contract FoundryTester is Test, Handlers {
         basketVault_redeemInKind_clamped(1e18, actor);
         environment_secondary(0, 200e18, 1, actor); // NVDAB cheaper -> ondo->bstock migration gains shares
         basketVault_migrate_clamped(1_000, true, 0);
-        agentMandate_createMandate_clamped(500e18, 1000e18, 7, 300, true, true, true);
-        agentMandate_agentBuyShares_clamped(0, 100e18, 1, 0);
+        agentMandate_createMandate_clamped(500e6, 1000e6, 7, 300, true, true, true);
+        agentMandate_agentBuyShares_clamped(0, 100e6, 1, 0);
         agentMandate_agentMintBasket_clamped(0, 1e18, 7_000);
         stockRegistry_secondary(4, 1.005e18, 0, 0);
         environment_warp(1 hours);

@@ -10,7 +10,7 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 contract StockRegistryTest is BaseTest {
     function test_constructor_rejectsZero() public {
         vm.expectRevert(StockRegistry.ZeroAddress.selector);
-        new StockRegistry(address(0), address(usdt));
+        new StockRegistry(address(0), address(usdg));
         vm.expectRevert(StockRegistry.ZeroAddress.selector);
         new StockRegistry(admin, address(0));
     }

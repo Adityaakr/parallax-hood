@@ -8,7 +8,7 @@ import {MandateHandler} from "./AgentMandate.invariant.t.sol";
 /// @dev Makes sure the invariant handlers actually reach the success paths (so the invariants are not vacuous).
 contract HandlerSanity is BaseTest {
     function test_vaultHandlerReachesAllPaths() public {
-        VaultHandler h = new VaultHandler(basket, registry, usdt, nvdaOn, nvdaB, aaplB, venue, keeper, guardian);
+        VaultHandler h = new VaultHandler(basket, registry, usdg, nvdaOn, nvdaB, aaplB, venue, keeper, guardian);
         venue.setKeeper(address(h));
         nvdaB.transferOwnership(address(h));
         aaplB.transferOwnership(address(h));
@@ -35,16 +35,16 @@ contract HandlerSanity is BaseTest {
         registry.setLimits(365 days, 365 days, 500);
         registry.setPriceLimits(365 days, 2_000);
         vm.stopPrank();
-        MandateHandler h = new MandateHandler(mandate, router, basket, usdt, nvdaB, aaplB, nvdaOn, venue, alice, agent);
-        h.agentBuy(100e18, false, false);
+        MandateHandler h = new MandateHandler(mandate, router, basket, usdg, nvdaB, aaplB, nvdaOn, venue, alice, agent);
+        h.agentBuy(100e6, false, false);
         assertEq(h.successfulSpends(), 1, "buy path");
         h.agentMint(1e18, 250);
         assertEq(h.successfulSpends(), 2, "mint path");
-        h.agentBuy(100e18, true, false); // wrong underlying -> no spend
-        h.agentBuy(100e18, false, true); // pay agent -> no spend
+        h.agentBuy(100e6, true, false); // wrong underlying -> no spend
+        h.agentBuy(100e6, false, true); // pay agent -> no spend
         assertEq(h.successfulSpends(), 2);
         h.ownerRevoke();
-        h.agentBuy(100e18, false, false);
+        h.agentBuy(100e6, false, false);
         assertEq(h.successfulSpends(), 2);
         assertFalse(h.spendAfterRevoke());
     }

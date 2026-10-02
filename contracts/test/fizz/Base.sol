@@ -19,7 +19,7 @@ import {AgentMandate} from "../../src/AgentMandate.sol";
 import {IStockRegistry} from "../../src/interfaces/IStockRegistry.sol";
 import {IBasketVault} from "../../src/interfaces/IBasketVault.sol";
 import {LegExecutor} from "../../src/libraries/LegExecutor.sol";
-import {MockUSDT} from "../../src/mocks/MockUSDT.sol";
+import {MockUSDG} from "../../src/mocks/MockUSDG.sol";
 import {MockStockToken} from "../../src/mocks/MockStockToken.sol";
 import {MockSwapTarget} from "../../src/mocks/MockSwapTarget.sol";
 
@@ -32,7 +32,8 @@ abstract contract Base is StringUtils, Clamp, Deployer, Math {
     uint256 internal constant BLOCK_INTERVAL = 12 seconds;
     uint256 internal constant INITIAL_ETH_BALANCE = 1_000 ether;
     uint256 internal constant INITIAL_TOKEN_BALANCE = 10_000;
-    uint256 internal constant INITIAL_USDT = 1_000_000e18;
+    uint256 internal constant INITIAL_USDG = 1_000_000e6;
+    uint256 internal constant USDG_SCALE = 1e12; // 1e18-scaled USD per raw unit of 6-decimal USDG
     uint256 internal constant WAD = 1e18;
     uint256 internal constant BPS = 10_000;
 
@@ -59,7 +60,7 @@ abstract contract Base is StringUtils, Clamp, Deployer, Math {
         mapping(address => uint256) vaultDonated; // tokens pushed straight to the vault, per token
         bool freeMintSucceeded; // a mint without full delivery went through (must never)
         uint256 feePaid; // protocol fee observed leaving callers, cumulative
-        uint256 feeRecipientHigh; // high-water mark of the fee recipient's USDT balance
+        uint256 feeRecipientHigh; // high-water mark of the fee recipient's USDG balance
         uint256 vaultWindfalls; // events that leave value in the vault for later holders: migrations, forfeited slices, donations (GL-05)
         mapping(address => uint256) mandateDonated; // tokens pushed straight to the mandate, per token (GL-04)
 
@@ -133,7 +134,7 @@ abstract contract Base is StringUtils, Clamp, Deployer, Math {
 
     // ―――――――――――――――――――――――― Contracts ―――――――――――――――――――――――――
 
-    MockUSDT public usdt;
+    MockUSDG public usdg;
     MockStockToken public nvdaOn; // plain ERC-20, keeper ratio
     MockStockToken public nvdaB; // ERC-8056
     MockStockToken public aaplB; // ERC-8056
@@ -154,7 +155,7 @@ abstract contract Base is StringUtils, Clamp, Deployer, Math {
         vm.label(guardian, "Guardian");
         vm.label(agent, "Agent");
 
-        usdt = new MockUSDT();
+        usdg = new MockUSDG();
         nvdaOn = new MockStockToken("NVIDIA (Ondo Tokenized)", "NVDAon", false);
         nvdaB = new MockStockToken("NVIDIA Corp", "NVDAB", true);
         aaplB = new MockStockToken("Apple", "AAPLB", true);
@@ -162,19 +163,19 @@ abstract contract Base is StringUtils, Clamp, Deployer, Math {
         aaplB.setMultiplier(AAPL_B_MULT);
 
         venue = new MockSwapTarget();
-        venue.setPrice(address(usdt), 1e18);
+        venue.setPrice(address(usdg), 1e30); // $1 per 1e6 raw units = 1e30 per 1e18 raw units
         venue.setPrice(address(nvdaOn), NVDA_PX * NVDA_ON_RATIO / WAD);
         venue.setPrice(address(nvdaB), NVDA_PX * NVDA_B_MULT / WAD);
         venue.setPrice(address(aaplB), AAPL_PX * AAPL_B_MULT / WAD);
         nvdaOn.mint(address(venue), 1_000_000e18);
         nvdaB.mint(address(venue), 1_000_000e18);
         aaplB.mint(address(venue), 1_000_000e18);
-        usdt.mint(address(venue), 1_000_000_000e18);
+        usdg.mint(address(venue), 1_000_000_000e6);
 
-        registry = new StockRegistry(admin, address(usdt));
+        registry = new StockRegistry(admin, address(usdg));
         router = new ShareRouter(registry);
         factory = new BasketFactory(registry, admin);
-        mandate = new AgentMandate(router, registry, IERC20(address(usdt)));
+        mandate = new AgentMandate(router, registry, IERC20(address(usdg)));
 
         registry.grantRole(registry.KEEPER_ROLE(), keeper);
         registry.grantRole(registry.GUARDIAN_ROLE(), guardian);
@@ -228,11 +229,11 @@ abstract contract Base is StringUtils, Clamp, Deployer, Math {
             if (ACTOR_LABELS.length > i) {
                 vm.label(_actor, ACTOR_LABELS[i]);
             }
-            usdt.mint(_actor, INITIAL_USDT);
+            usdg.mint(_actor, INITIAL_USDG);
             vm.startPrank(_actor);
-            usdt.approve(address(router), type(uint256).max);
-            usdt.approve(address(basket), type(uint256).max);
-            usdt.approve(address(mandate), type(uint256).max);
+            usdg.approve(address(router), type(uint256).max);
+            usdg.approve(address(basket), type(uint256).max);
+            usdg.approve(address(mandate), type(uint256).max);
             nvdaOn.approve(address(router), type(uint256).max);
             nvdaB.approve(address(router), type(uint256).max);
             aaplB.approve(address(router), type(uint256).max);
@@ -264,41 +265,43 @@ abstract contract Base is StringUtils, Clamp, Deployer, Math {
         l[0] = a;
     }
 
-    /// @dev USDT that buys `shares` of `token` at the venue's current price, with headroom for the venue fee.
-    function _usdtForShares(address token, uint256 shares) internal view returns (uint256) {
+    /// @dev USDG (6 decimals) that buys `shares` of `token` at the venue's current price, with headroom for the
+    ///      venue fee. The 1e18-scaled USD value is brought down to USDG units rounding up.
+    function _usdgForShares(address token, uint256 shares) internal view returns (uint256) {
         (uint256 ratio,) = registry.ratioOf(token);
         if (ratio == 0) return 0;
         uint256 tokens = shares * WAD / ratio + 1;
         uint256 usd = tokens * venue.price(token) / WAD;
-        return usd * (BPS + venue.feeBps() + 5) / BPS + 1;
+        uint256 usdWithHeadroom = usd * (BPS + venue.feeBps() + 5) / BPS + 1;
+        return (usdWithHeadroom + USDG_SCALE - 1) / USDG_SCALE;
     }
 
     /// @dev Legs that fully back `units` of the basket: NVDA split `bstockBps` NVDAB / rest NVDAon, AAPL all AAPLB.
     function _mintLegs(uint256 units, uint256 bstockBps)
         internal
         view
-        returns (LegExecutor.Leg[] memory legs, uint256 maxUsdt)
+        returns (LegExecutor.Leg[] memory legs, uint256 maxUsdg)
     {
         uint256 nvdaShares = units * NVDA_PER_UNIT / WAD + 1;
         uint256 aaplShares = units * AAPL_PER_UNIT / WAD + 1;
-        uint256 uB = bstockBps == 0 ? 0 : _usdtForShares(address(nvdaB), nvdaShares * bstockBps / BPS + 1);
-        uint256 uO = bstockBps == BPS ? 0 : _usdtForShares(address(nvdaOn), nvdaShares * (BPS - bstockBps) / BPS + 1);
-        uint256 uA = _usdtForShares(address(aaplB), aaplShares);
+        uint256 uB = bstockBps == 0 ? 0 : _usdgForShares(address(nvdaB), nvdaShares * bstockBps / BPS + 1);
+        uint256 uO = bstockBps == BPS ? 0 : _usdgForShares(address(nvdaOn), nvdaShares * (BPS - bstockBps) / BPS + 1);
+        uint256 uA = _usdgForShares(address(aaplB), aaplShares);
         uint256 n = (uB > 0 ? 1 : 0) + (uO > 0 ? 1 : 0) + 1;
         legs = new LegExecutor.Leg[](n);
         uint256 k;
-        if (uB > 0) legs[k++] = _leg(address(usdt), address(nvdaB), uB, address(basket));
-        if (uO > 0) legs[k++] = _leg(address(usdt), address(nvdaOn), uO, address(basket));
-        legs[k] = _leg(address(usdt), address(aaplB), uA, address(basket));
-        maxUsdt = uB + uO + uA;
+        if (uB > 0) legs[k++] = _leg(address(usdg), address(nvdaB), uB, address(basket));
+        if (uO > 0) legs[k++] = _leg(address(usdg), address(nvdaOn), uO, address(basket));
+        legs[k] = _leg(address(usdg), address(aaplB), uA, address(basket));
+        maxUsdg = uB + uO + uA;
         // the protocol fee is paid from the unspent remainder: size the budget to cover it
-        maxUsdt = maxUsdt + maxUsdt * 60 / BPS + 1;
+        maxUsdg = maxUsdg + maxUsdg * 60 / BPS + 1;
     }
 
-    /// @dev The part of `usdtIn` the legs may spend so the protocol fee on it fits in the remainder.
-    function _notional(uint256 usdtIn) internal view returns (uint256) {
+    /// @dev The part of `usdgIn` the legs may spend so the protocol fee on it fits in the remainder.
+    function _notional(uint256 usdgIn) internal view returns (uint256) {
         (uint16 feeBps,) = registry.fee();
-        return usdtIn * BPS / (BPS + feeBps) - (usdtIn > 1 ? 1 : 0);
+        return usdgIn * BPS / (BPS + feeBps) - (usdgIn > 1 ? 1 : 0);
     }
 
     /// @dev Shares of `token` an actor holds, by the registry's live ratio.

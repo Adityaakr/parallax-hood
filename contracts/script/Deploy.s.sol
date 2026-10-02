@@ -12,7 +12,7 @@ import {AgentMandate} from "../src/AgentMandate.sol";
 import {IStockRegistry} from "../src/interfaces/IStockRegistry.sol";
 import {IBasketVault} from "../src/interfaces/IBasketVault.sol";
 import {IERC8056} from "../src/interfaces/IERC8056.sol";
-import {MockUSDT} from "../src/mocks/MockUSDT.sol";
+import {MockUSDG} from "../src/mocks/MockUSDG.sol";
 import {MockStockToken} from "../src/mocks/MockStockToken.sol";
 import {MockSwapTarget} from "../src/mocks/MockSwapTarget.sol";
 
@@ -42,7 +42,7 @@ abstract contract DeployBase is Script {
         return bytes32(bytes(t));
     }
 
-    /// @dev The protocol fee: bps of USDT notional (FEE_BPS, default 50, capped at 1 % in the contract), paid to
+    /// @dev The protocol fee: bps of USDG notional (FEE_BPS, default 50, capped at 1 % in the contract), paid to
     ///      FEE_RECIPIENT (default: the admin). Kept out of run() to stay under the stack limit.
     function _setFee(StockRegistry registry, address admin) internal {
         registry.setFee(uint16(vm.envOr("FEE_BPS", uint256(50))), vm.envOr("FEE_RECIPIENT", admin));
@@ -62,7 +62,7 @@ abstract contract DeployBase is Script {
 
 }
 
-/// @notice Step 1: core protocol. `USDT` from env or config; ADMIN = broadcaster (documented hackathon assumption).
+/// @notice Step 1: core protocol. `USDG` from env or config; ADMIN = broadcaster (documented hackathon assumption).
 ///   forge script script/Deploy.s.sol:DeployCore --rpc-url bsc --broadcast --verify
 contract DeployCore is DeployBase {
     using stdJson for string;
@@ -70,16 +70,16 @@ contract DeployCore is DeployBase {
     function run() external {
         uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address admin = vm.addr(pk);
-        address usdt = vm.envOr("USDT_ADDRESS", address(0));
+        address usdg = vm.envOr("USDG_ADDRESS", address(0));
         string memory existing = _readDeployments();
-        if (usdt == address(0) && _has(existing, "usdt")) usdt = _addr(existing, "usdt");
-        require(usdt != address(0), "USDT_ADDRESS not set and no mock USDT deployed");
+        if (usdg == address(0) && _has(existing, "usdg")) usdg = _addr(existing, "usdg");
+        require(usdg != address(0), "USDG_ADDRESS not set and no mock USDG deployed");
 
         vm.startBroadcast(pk);
-        StockRegistry registry = new StockRegistry(admin, usdt);
+        StockRegistry registry = new StockRegistry(admin, usdg);
         ShareRouter router = new ShareRouter(registry);
         BasketFactory factory = new BasketFactory(registry, admin);
-        AgentMandate mandate = new AgentMandate(router, registry, IERC20(usdt));
+        AgentMandate mandate = new AgentMandate(router, registry, IERC20(usdg));
         address keeper = vm.envOr("KEEPER_ADDRESS", admin);
         registry.grantRole(registry.KEEPER_ROLE(), keeper);
         registry.grantRole(registry.GUARDIAN_ROLE(), admin);
@@ -92,7 +92,7 @@ contract DeployCore is DeployBase {
         out.serialize("admin", admin);
         out.serialize("keeper", keeper);
         out.serialize("feeRecipient", registry.feeRecipient());
-        out.serialize("usdt", usdt);
+        out.serialize("usdg", usdg);
         out.serialize("registry", address(registry));
         out.serialize("router", address(router));
         out.serialize("factory", address(factory));
@@ -117,7 +117,7 @@ contract DeployCore is DeployBase {
     }
 }
 
-/// @notice Step 0 (testnet / local without fork): mocks. Writes usdt/venue/mocks into deployments.
+/// @notice Step 0 (testnet / local without fork): mocks. Writes usdg/venue/mocks into deployments.
 ///   forge script script/Deploy.s.sol:DeployMocks --rpc-url bsc_testnet --broadcast
 contract DeployMocks is DeployBase {
     using stdJson for string;
@@ -128,13 +128,13 @@ contract DeployMocks is DeployBase {
         uint256 n = _arrayLen(cfg, ".representations");
 
         vm.startBroadcast(pk);
-        MockUSDT usdt = new MockUSDT();
+        MockUSDG usdg = new MockUSDG();
         MockSwapTarget venue = new MockSwapTarget();
         venue.setKeeper(vm.envOr("KEEPER_ADDRESS", vm.addr(pk))); // the keeper mirrors mainnet prices onto it
-        venue.setPrice(address(usdt), 1e18);
+        venue.setPrice(address(usdg), 1e30); // 6-decimal USDG at $1: 1e18 USD per 1e18 raw units
         venue.setFeeBps(10);
-        usdt.mint(address(venue), 1e27);
-        usdt.mint(vm.addr(pk), 1e24);
+        usdg.mint(address(venue), 1_000_000_000e6);
+        usdg.mint(vm.addr(pk), 1_000_000e6);
 
         string memory mocks = "mocks";
         string memory mocksJson;
@@ -155,11 +155,11 @@ contract DeployMocks is DeployBase {
 
         string memory out = "deploy";
         out.serialize("chainId", block.chainid);
-        out.serialize("usdt", address(usdt));
+        out.serialize("usdg", address(usdg));
         out.serialize("venue", address(venue));
         string memory json = out.serialize("mocks", mocksJson);
         vm.writeJson(json, _deploymentsPath());
-        console2.log("mock usdt", address(usdt));
+        console2.log("mock usdg", address(usdg));
         console2.log("venue", address(venue));
     }
 }

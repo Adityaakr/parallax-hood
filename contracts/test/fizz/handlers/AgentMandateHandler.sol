@@ -19,23 +19,23 @@ abstract contract AgentMandateHandler is Properties {
         bool allowAapl,
         bool allowBasket
     ) public {
-        perTxCap = uint128(clampBetween(perTxCap, 1e18, 20_000e18));
-        dailyCap = uint128(clampBetween(dailyCap, perTxCap, 100_000e18));
+        perTxCap = uint128(clampBetween(perTxCap, 1e6, 20_000e6));
+        dailyCap = uint128(clampBetween(dailyCap, perTxCap, 100_000e6));
         days_ = uint32(clampBetween(days_, 1, 60));
         slippageBps = uint16(clampBetween(slippageBps, 1, 2_000));
         agentMandate_createMandate(perTxCap, dailyCap, uint64(block.timestamp + uint256(days_) * 1 days), slippageBps, allowNvda, allowAapl, allowBasket);
     }
 
     /// @dev Agent buys within the per-tx cap at fair execution.
-    function agentMandate_agentBuyShares_clamped(uint256 idSeed, uint256 usdtIn, uint8 repSeed, uint8 shape) public {
+    function agentMandate_agentBuyShares_clamped(uint256 idSeed, uint256 usdgIn, uint8 repSeed, uint8 shape) public {
         if (mandateIds.length == 0) return;
         uint256 id = mandateIds[idSeed % mandateIds.length];
         AgentMandate.Mandate memory m = mandate.getMandate(id);
         uint256 room = mandate.remainingDaily(id);
-        if (room > m.perTxCapUsdt) room = m.perTxCapUsdt;
-        if (room < 1e18) return;
-        usdtIn = clampBetween(usdtIn, 1e18, room);
-        agentMandate_agentBuyShares(id, usdtIn, 0, repSeed, shape % 4);
+        if (room > m.perTxCapUsdg) room = m.perTxCapUsdg;
+        if (room < 1e6) return;
+        usdgIn = clampBetween(usdgIn, 1e6, room);
+        agentMandate_agentBuyShares(id, usdgIn, 0, repSeed, shape % 4);
     }
 
     /// @dev Agent mints basket units with a budget close to fair value (the floor rejects overspends).
@@ -43,8 +43,8 @@ abstract contract AgentMandateHandler is Properties {
         if (mandateIds.length == 0) return;
         uint256 id = mandateIds[idSeed % mandateIds.length];
         units = clampBetween(units, 0.01e18, 20e18);
-        (LegExecutor.Leg[] memory legs, uint256 maxUsdt) = _mintLegs(units, uint16(clampBetween(bstockBps, 0, BPS)));
-        agentMandate_agentMintBasket(id, units, maxUsdt, legs);
+        (LegExecutor.Leg[] memory legs, uint256 maxUsdg) = _mintLegs(units, uint16(clampBetween(bstockBps, 0, BPS)));
+        agentMandate_agentMintBasket(id, units, maxUsdg, legs);
     }
 
     /// @dev Adversarial agent: asks for far more units than the budget buys, or far fewer (value left in the
@@ -53,8 +53,8 @@ abstract contract AgentMandateHandler is Properties {
         if (mandateIds.length == 0) return;
         uint256 id = mandateIds[idSeed % mandateIds.length];
         units = clampBetween(units, 0.1e18, 10e18);
-        (LegExecutor.Leg[] memory legs, uint256 maxUsdt) = _mintLegs(units, 7_000);
-        agentMandate_agentMintBasket(id, tooMany ? units * 2 : units / 2, maxUsdt, legs);
+        (LegExecutor.Leg[] memory legs, uint256 maxUsdg) = _mintLegs(units, 7_000);
+        agentMandate_agentMintBasket(id, tooMany ? units * 2 : units / 2, maxUsdg, legs);
     }
 
     function agentMandate_secondary(uint8 selector, uint256 idSeed, bool flag, bool nvda) public {
@@ -74,12 +74,12 @@ abstract contract AgentMandateHandler is Properties {
         AgentMandate.Mandate memory m = mandate.getMandate(id);
         if (m.active) {
             uint256 room = mandate.remainingDaily(id);
-            if (room > m.perTxCapUsdt) room = m.perTxCapUsdt;
-            if (room >= 1e18) {
+            if (room > m.perTxCapUsdg) room = m.perTxCapUsdg;
+            if (room >= 1e6) {
                 address rep = reps[0];
                 bytes32 uid = registry.underlyingOf(rep);
-                if (mandate.allowedUnderlying(id, uid) && registry.isBuyEligible(rep) && usdt.balanceOf(m.owner) >= room) {
-                    LegExecutor.Leg[] memory legs = _legs1(_leg(address(usdt), rep, _notional(room), address(router)));
+                if (mandate.allowedUnderlying(id, uid) && registry.isBuyEligible(rep) && usdg.balanceOf(m.owner) >= room) {
+                    LegExecutor.Leg[] memory legs = _legs1(_leg(address(usdg), rep, _notional(room), address(router)));
                     vm.prank(agent);
                     try mandate.agentBuyShares(id, uid, room, 0, legs, keccak256(abi.encode("SP07", id, room, block.timestamp)))
                     {} catch {}
@@ -97,7 +97,7 @@ abstract contract AgentMandateHandler is Properties {
     }
 
     /// @notice SP-08: no agentBuyShares call succeeds on a mandate id after it was revoked.
-    function agentMandate_agentBuyShares_afterRevoke(uint256 idSeed, uint256 usdtIn, uint8 repSeed) public {
+    function agentMandate_agentBuyShares_afterRevoke(uint256 idSeed, uint256 usdgIn, uint8 repSeed) public {
         if (mandateIds.length == 0) return;
         uint256 id = mandateIds[idSeed % mandateIds.length];
         AgentMandate.Mandate memory m = mandate.getMandate(id);
@@ -107,20 +107,20 @@ abstract contract AgentMandateHandler is Properties {
         }
         address rep = reps[repSeed % reps.length];
         bytes32 uid = registry.underlyingOf(rep);
-        usdtIn = clampBetween(usdtIn, 1e18, 1_000e18);
-        LegExecutor.Leg[] memory legs = _legs1(_leg(address(usdt), rep, _notional(usdtIn), address(router)));
-        uint256 ownerUsdtBefore = usdt.balanceOf(m.owner);
+        usdgIn = clampBetween(usdgIn, 1e6, 1_000e6);
+        LegExecutor.Leg[] memory legs = _legs1(_leg(address(usdg), rep, _notional(usdgIn), address(router)));
+        uint256 ownerUsdgBefore = usdg.balanceOf(m.owner);
         bool succeeded;
         vm.prank(agent);
-        try mandate.agentBuyShares(id, uid, usdtIn, 0, legs, keccak256(abi.encode("SP08", id, usdtIn, block.timestamp))) {
+        try mandate.agentBuyShares(id, uid, usdgIn, 0, legs, keccak256(abi.encode("SP08", id, usdgIn, block.timestamp))) {
             succeeded = true;
         } catch {}
-        _prop_agentCannotSpendAfterRevoke(succeeded, ownerUsdtBefore, m.owner);
+        _prop_agentCannotSpendAfterRevoke(succeeded, ownerUsdgBefore, m.owner);
     }
 
     /// @notice SP-14: only a mandate's designated agent can call agentBuyShares on it; a reverted impostor call
-    ///         pulls no USDT from the owner.
-    function agentMandate_agentBuyShares_wrongCaller(uint256 idSeed, uint256 usdtIn, uint8 repSeed, uint256 callerSeed)
+    ///         pulls no USDG from the owner.
+    function agentMandate_agentBuyShares_wrongCaller(uint256 idSeed, uint256 usdgIn, uint8 repSeed, uint256 callerSeed)
         public
     {
         if (mandateIds.length == 0) return;
@@ -130,15 +130,15 @@ abstract contract AgentMandateHandler is Properties {
         if (impostor == m.agent) return;
         address rep = reps[repSeed % reps.length];
         bytes32 uid = registry.underlyingOf(rep);
-        usdtIn = clampBetween(usdtIn, 1e18, 1_000e18);
-        LegExecutor.Leg[] memory legs = _legs1(_leg(address(usdt), rep, _notional(usdtIn), address(router)));
-        uint256 ownerUsdtBefore = usdt.balanceOf(m.owner);
+        usdgIn = clampBetween(usdgIn, 1e6, 1_000e6);
+        LegExecutor.Leg[] memory legs = _legs1(_leg(address(usdg), rep, _notional(usdgIn), address(router)));
+        uint256 ownerUsdgBefore = usdg.balanceOf(m.owner);
         bool succeeded;
         vm.prank(impostor);
-        try mandate.agentBuyShares(id, uid, usdtIn, 0, legs, keccak256(abi.encode("SP14", id, usdtIn, block.timestamp))) {
+        try mandate.agentBuyShares(id, uid, usdgIn, 0, legs, keccak256(abi.encode("SP14", id, usdgIn, block.timestamp))) {
             succeeded = true;
         } catch {}
-        _prop_nonAgentCannotSpendMandate(succeeded, ownerUsdtBefore, m.owner);
+        _prop_nonAgentCannotSpendMandate(succeeded, ownerUsdgBefore, m.owner);
     }
 
     /// @notice SP-15: only a mandate's owner can call revoke/setAllowedUnderlying/setAllowedBasket on it
@@ -207,48 +207,48 @@ abstract contract AgentMandateHandler is Properties {
     }
 
     /// @param shape 0 single leg · 1 split · 2 leg pays the agent (misdirected) · 3 wrong underlying
-    function agentMandate_agentBuyShares(uint256 id, uint256 usdtIn, uint256 minShares, uint8 repSeed, uint8 shape)
+    function agentMandate_agentBuyShares(uint256 id, uint256 usdgIn, uint256 minShares, uint8 repSeed, uint8 shape)
         public
         asAgent
     {
         address rep = reps[repSeed % reps.length];
         bytes32 uid = registry.underlyingOf(rep);
         LegExecutor.Leg[] memory legs;
-        uint256 notional = _notional(usdtIn);
+        uint256 notional = _notional(usdgIn);
         if (shape == 1 && uid == NVDA) {
             legs = new LegExecutor.Leg[](2);
-            legs[0] = _leg(address(usdt), address(nvdaB), notional / 2, address(router));
-            legs[1] = _leg(address(usdt), address(nvdaOn), notional - notional / 2, address(router));
+            legs[0] = _leg(address(usdg), address(nvdaB), notional / 2, address(router));
+            legs[1] = _leg(address(usdg), address(nvdaOn), notional - notional / 2, address(router));
         } else if (shape == 2) {
-            legs = _legs1(_leg(address(usdt), rep, notional, agent));
+            legs = _legs1(_leg(address(usdg), rep, notional, agent));
         } else if (shape == 3) {
-            legs = _legs1(_leg(address(usdt), uid == NVDA ? address(aaplB) : address(nvdaB), notional, address(router)));
+            legs = _legs1(_leg(address(usdg), uid == NVDA ? address(aaplB) : address(nvdaB), notional, address(router)));
         } else {
-            legs = _legs1(_leg(address(usdt), rep, notional, address(router)));
+            legs = _legs1(_leg(address(usdg), rep, notional, address(router)));
         }
         AgentMandate.Mandate memory m = mandate.getMandate(id);
         snapshotBefore();
-        uint256 ownerUsdtBefore = usdt.balanceOf(m.owner);
+        uint256 ownerUsdgBefore = usdg.balanceOf(m.owner);
         uint256 ownerSharesBefore = _sharesHeld(rep, m.owner);
         uint256 spentBefore = mandate.getMandate(id).spentInWindow;
-        uint256 sharesOut = mandate.agentBuyShares(id, uid, usdtIn, minShares, legs, keccak256(abi.encode(id, usdtIn)));
+        uint256 sharesOut = mandate.agentBuyShares(id, uid, usdgIn, minShares, legs, keccak256(abi.encode(id, usdgIn)));
         snapshotAfter();
-        _prop_agentBuy(id, uid, usdtIn, sharesOut, ownerUsdtBefore, ownerSharesBefore, spentBefore, rep);
+        _prop_agentBuy(id, uid, usdgIn, sharesOut, ownerUsdgBefore, ownerSharesBefore, spentBefore, rep);
         _prop_mandateAllowanceResetAfterAgentCall(address(router));
     }
 
-    function agentMandate_agentMintBasket(uint256 id, uint256 units, uint256 maxUsdtIn, LegExecutor.Leg[] memory legs)
+    function agentMandate_agentMintBasket(uint256 id, uint256 units, uint256 maxUsdgIn, LegExecutor.Leg[] memory legs)
         public
         asAgent
     {
         AgentMandate.Mandate memory m = mandate.getMandate(id);
         snapshotBefore();
-        uint256 ownerUsdtBefore = usdt.balanceOf(m.owner);
+        uint256 ownerUsdgBefore = usdg.balanceOf(m.owner);
         uint256 ownerUnitsBefore = basket.balanceOf(m.owner);
         uint256 spentBefore = m.spentInWindow;
-        uint256 spent = mandate.agentMintBasket(id, address(basket), units, maxUsdtIn, legs, keccak256(abi.encode(id, units)));
+        uint256 spent = mandate.agentMintBasket(id, address(basket), units, maxUsdgIn, legs, keccak256(abi.encode(id, units)));
         snapshotAfter();
-        _prop_agentMint(id, units, maxUsdtIn, spent, ownerUsdtBefore, ownerUnitsBefore, spentBefore);
+        _prop_agentMint(id, units, maxUsdgIn, spent, ownerUsdgBefore, ownerUnitsBefore, spentBefore);
         _prop_mandateAllowanceResetAfterAgentCall(address(basket));
     }
 

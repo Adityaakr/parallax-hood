@@ -69,36 +69,36 @@ contract BasketVaultTest is BaseTest {
         assertTrue(basket.backingOk());
         assertGe(basket.heldShares(0), 1e18); // 10 units * 0.1 NVDA
         assertGe(basket.heldShares(1), 0.5e18); // 10 units * 0.05 AAPL
-        // fair cost ~ 10*(0.1*219 + 0.05*332) = 385 USDT
-        assertApproxEqRel(spent, 385e18, 0.01e18);
-        assertEq(usdt.balanceOf(address(basket)), 0);
+        // fair cost ~ 10*(0.1*219 + 0.05*332) = 385 USDG
+        assertApproxEqRel(spent, 385e6, 0.01e18);
+        assertEq(usdg.balanceOf(address(basket)), 0);
     }
 
     function test_mint_refundsLeftover() public {
-        (LegExecutor.Leg[] memory legs, uint256 maxUsdt) = _mintLegs(1e18);
-        uint256 before = usdt.balanceOf(alice);
+        (LegExecutor.Leg[] memory legs, uint256 maxUsdg) = _mintLegs(1e18);
+        uint256 before = usdg.balanceOf(alice);
         vm.startPrank(alice);
-        usdt.approve(address(basket), maxUsdt + 100e18);
-        uint256 spent = basket.mint(1e18, maxUsdt + 100e18, legs, alice, QH);
+        usdg.approve(address(basket), maxUsdg + 100e6);
+        uint256 spent = basket.mint(1e18, maxUsdg + 100e6, legs, alice, QH);
         vm.stopPrank();
-        assertEq(usdt.balanceOf(alice), before - spent);
-        assertLt(spent, maxUsdt + 100e18);
+        assertEq(usdg.balanceOf(alice), before - spent);
+        assertLt(spent, maxUsdg + 100e6);
     }
 
     function test_mint_revertsWhenUnderBacked() public {
-        (LegExecutor.Leg[] memory legs, uint256 maxUsdt) = _mintLegs(1e18);
+        (LegExecutor.Leg[] memory legs, uint256 maxUsdg) = _mintLegs(1e18);
         vm.startPrank(alice);
-        usdt.approve(address(basket), maxUsdt);
+        usdg.approve(address(basket), maxUsdg);
         vm.expectRevert(); // BackingViolated for AAPL: legs only cover 1 unit
-        basket.mint(2e18, maxUsdt, legs, alice, QH);
+        basket.mint(2e18, maxUsdg, legs, alice, QH);
         vm.stopPrank();
     }
 
     function test_mint_revertsWithoutLegsForAConstituent() public {
-        uint256 u1 = _usdtForShares(address(nvdaB), 0.1e18 + 1);
-        LegExecutor.Leg[] memory legs = _legs1(_leg(address(usdt), address(nvdaB), u1, address(basket)));
+        uint256 u1 = _usdgForShares(address(nvdaB), 0.1e18 + 1);
+        LegExecutor.Leg[] memory legs = _legs1(_leg(address(usdg), address(nvdaB), u1, address(basket)));
         vm.startPrank(alice);
-        usdt.approve(address(basket), u1);
+        usdg.approve(address(basket), u1);
         vm.expectRevert(abi.encodeWithSelector(BasketVault.UnderDelivered.selector, AAPL, 0, 0.05e18));
         basket.mint(1e18, u1, legs, alice, QH);
         vm.stopPrank();
@@ -113,38 +113,38 @@ contract BasketVaultTest is BaseTest {
         assertTrue(basket.backingOk());
         LegExecutor.Leg[] memory none = new LegExecutor.Leg[](0);
         vm.startPrank(bob);
-        usdt.approve(address(basket), 1);
+        usdg.approve(address(basket), 1);
         vm.expectRevert(BasketVault.NoLegs.selector);
         basket.mint(1e18, 1, none, bob, QH);
         // a token leg that delivers only one constituent is caught per constituent, not by the aggregate check
-        uint256 u1 = _usdtForShares(address(nvdaB), 0.1e18 + 1);
-        usdt.approve(address(basket), u1);
+        uint256 u1 = _usdgForShares(address(nvdaB), 0.1e18 + 1);
+        usdg.approve(address(basket), u1);
         vm.expectRevert(abi.encodeWithSelector(BasketVault.UnderDelivered.selector, AAPL, 0, 0.05e18));
-        basket.mint(1e18, u1, _legs1(_leg(address(usdt), address(nvdaB), u1, address(basket))), bob, QH);
+        basket.mint(1e18, u1, _legs1(_leg(address(usdg), address(nvdaB), u1, address(basket))), bob, QH);
         vm.stopPrank();
         assertEq(basket.balanceOf(bob), 0);
     }
 
     function test_mint_rejectsBadLegs() public {
-        (LegExecutor.Leg[] memory legs, uint256 maxUsdt) = _mintLegs(1e18);
+        (LegExecutor.Leg[] memory legs, uint256 maxUsdg) = _mintLegs(1e18);
         vm.startPrank(alice);
-        usdt.approve(address(basket), maxUsdt);
+        usdg.approve(address(basket), maxUsdg);
 
         vm.expectRevert(BasketVault.ZeroAmount.selector);
-        basket.mint(0, maxUsdt, legs, alice, QH);
+        basket.mint(0, maxUsdg, legs, alice, QH);
         vm.expectRevert(BasketVault.ZeroAmount.selector);
         basket.mint(1e18, 0, legs, alice, QH);
         vm.expectRevert(BasketVault.ZeroAddress.selector);
-        basket.mint(1e18, maxUsdt, legs, address(0), QH);
+        basket.mint(1e18, maxUsdg, legs, address(0), QH);
 
         LegExecutor.Leg[] memory bad = _legs1(legs[0]);
         bad[0].target = alice;
         vm.expectRevert(abi.encodeWithSelector(BasketVault.TargetNotAllowed.selector, alice));
-        basket.mint(1e18, maxUsdt, bad, alice, QH);
+        basket.mint(1e18, maxUsdg, bad, alice, QH);
 
-        bad = _legs1(_leg(address(nvdaB), address(usdt), 1e18, address(basket)));
-        vm.expectRevert(abi.encodeWithSelector(BasketVault.LegTokenInMustBeUsdt.selector, address(nvdaB)));
-        basket.mint(1e18, maxUsdt, bad, alice, QH);
+        bad = _legs1(_leg(address(nvdaB), address(usdg), 1e18, address(basket)));
+        vm.expectRevert(abi.encodeWithSelector(BasketVault.LegTokenInMustBeUsdg.selector, address(nvdaB)));
+        basket.mint(1e18, maxUsdg, bad, alice, QH);
 
         vm.stopPrank();
     }
@@ -153,11 +153,11 @@ contract BasketVaultTest is BaseTest {
         // deprecate nvdaB -> not buy eligible
         vm.prank(admin);
         registry.setRepresentationActive(address(nvdaB), false);
-        (LegExecutor.Leg[] memory legs, uint256 maxUsdt) = _mintLegs(1e18);
+        (LegExecutor.Leg[] memory legs, uint256 maxUsdg) = _mintLegs(1e18);
         vm.startPrank(alice);
-        usdt.approve(address(basket), maxUsdt);
+        usdg.approve(address(basket), maxUsdg);
         vm.expectRevert(abi.encodeWithSelector(BasketVault.NotBuyEligible.selector, address(nvdaB)));
-        basket.mint(1e18, maxUsdt, legs, alice, QH);
+        basket.mint(1e18, maxUsdg, legs, alice, QH);
         vm.stopPrank();
 
         // token of an underlying that is not a constituent
@@ -172,49 +172,49 @@ contract BasketVaultTest is BaseTest {
         registry.addRepresentation(tsla, bytes32("TSLA"), BSTOCK, src, 1e18);
         venue.setPrice(tsla, 300e18);
         tslaB.mint(address(venue), 1e24);
-        LegExecutor.Leg[] memory bad = _legs1(_leg(address(usdt), tsla, 100e18, address(basket)));
+        LegExecutor.Leg[] memory bad = _legs1(_leg(address(usdg), tsla, 100e6, address(basket)));
         vm.startPrank(alice);
-        usdt.approve(address(basket), 100e18);
+        usdg.approve(address(basket), 100e6);
         vm.expectRevert(abi.encodeWithSelector(BasketVault.NotAConstituent.selector, tsla));
-        basket.mint(1e18, 100e18, bad, alice, QH);
+        basket.mint(1e18, 100e6, bad, alice, QH);
         vm.stopPrank();
     }
 
     function test_mint_overspendGuard() public {
-        // Pre-existing vault USDT (donated) must not let legs exceed maxUsdtIn.
-        usdt.mint(address(basket), 1000e18);
-        (LegExecutor.Leg[] memory legs, uint256 maxUsdt) = _mintLegs(1e18);
+        // Pre-existing vault USDG (donated) must not let legs exceed maxUsdgIn.
+        usdg.mint(address(basket), 1000e6);
+        (LegExecutor.Leg[] memory legs, uint256 maxUsdg) = _mintLegs(1e18);
         vm.startPrank(alice);
-        usdt.approve(address(basket), 1);
+        usdg.approve(address(basket), 1);
         vm.expectRevert(); // OverSpent
         basket.mint(1e18, 1, legs, alice, QH);
         vm.stopPrank();
-        maxUsdt; // silence
+        maxUsdg; // silence
     }
 
     function test_mint_issuerCapEnforced() public {
         // NVDA cap is 80 %. Fill 100 % from bstock while ondo is also eligible -> revert.
-        uint256 u1 = _usdtForShares(address(nvdaB), 0.1e18 + 1);
-        uint256 u2 = _usdtForShares(address(aaplB), 0.05e18 + 1);
+        uint256 u1 = _usdgForShares(address(nvdaB), 0.1e18 + 1);
+        uint256 u2 = _usdgForShares(address(aaplB), 0.05e18 + 1);
         LegExecutor.Leg[] memory legs = _legs2(
-            _leg(address(usdt), address(nvdaB), u1, address(basket)),
-            _leg(address(usdt), address(aaplB), u2, address(basket))
+            _leg(address(usdg), address(nvdaB), u1, address(basket)),
+            _leg(address(usdg), address(aaplB), u2, address(basket))
         );
         vm.startPrank(alice);
-        usdt.approve(address(basket), u1 + u2);
+        usdg.approve(address(basket), u1 + u2);
         vm.expectRevert(); // IssuerCapExceeded(NVDA, bstock, ...)
         basket.mint(1e18, u1 + u2, legs, alice, QH);
         vm.stopPrank();
 
         // 70/30 split satisfies the cap
-        uint256 uB = _usdtForShares(address(nvdaB), 0.07e18 + 1);
-        uint256 uO = _usdtForShares(address(nvdaOn), 0.03e18 + 1);
+        uint256 uB = _usdgForShares(address(nvdaB), 0.07e18 + 1);
+        uint256 uO = _usdgForShares(address(nvdaOn), 0.03e18 + 1);
         LegExecutor.Leg[] memory legs3 = new LegExecutor.Leg[](3);
-        legs3[0] = _leg(address(usdt), address(nvdaB), uB, address(basket));
-        legs3[1] = _leg(address(usdt), address(nvdaOn), uO, address(basket));
-        legs3[2] = _leg(address(usdt), address(aaplB), u2, address(basket));
+        legs3[0] = _leg(address(usdg), address(nvdaB), uB, address(basket));
+        legs3[1] = _leg(address(usdg), address(nvdaOn), uO, address(basket));
+        legs3[2] = _leg(address(usdg), address(aaplB), u2, address(basket));
         vm.startPrank(alice);
-        usdt.approve(address(basket), uB + uO + u2);
+        usdg.approve(address(basket), uB + uO + u2);
         basket.mint(1e18, uB + uO + u2, legs3, alice, QH);
         vm.stopPrank();
         assertTrue(basket.backingOk());
@@ -228,10 +228,10 @@ contract BasketVaultTest is BaseTest {
         vm.warp(block.timestamp + 13 hours);
         vm.prank(keeper);
         registry.postAttestation(BSTOCK, uint64(block.timestamp));
-        (LegExecutor.Leg[] memory legs, uint256 maxUsdt) = _mintLegsBstockOnly(1e18);
+        (LegExecutor.Leg[] memory legs, uint256 maxUsdg) = _mintLegsBstockOnly(1e18);
         vm.startPrank(alice);
-        usdt.approve(address(basket), maxUsdt);
-        basket.mint(1e18, maxUsdt, legs, alice, QH);
+        usdg.approve(address(basket), maxUsdg);
+        basket.mint(1e18, maxUsdg, legs, alice, QH);
         vm.stopPrank();
         assertTrue(basket.backingOk());
     }
@@ -242,10 +242,10 @@ contract BasketVaultTest is BaseTest {
         vm.warp(block.timestamp + 13 hours);
         vm.prank(keeper);
         registry.postAttestation(BSTOCK, uint64(block.timestamp));
-        (LegExecutor.Leg[] memory legs, uint256 maxUsdt) = _mintLegsBstockOnly(1e18);
+        (LegExecutor.Leg[] memory legs, uint256 maxUsdg) = _mintLegsBstockOnly(1e18);
         vm.startPrank(alice);
-        usdt.approve(address(basket), maxUsdt);
-        basket.mint(1e18, maxUsdt, legs, alice, QH); // NVDA is now 100 % bstock (cap 80 %)
+        usdg.approve(address(basket), maxUsdg);
+        basket.mint(1e18, maxUsdg, legs, alice, QH); // NVDA is now 100 % bstock (cap 80 %)
         vm.stopPrank();
 
         // ondo becomes eligible again
@@ -255,16 +255,16 @@ contract BasketVaultTest is BaseTest {
         vm.stopPrank();
 
         // adding more bstock (100 % -> still 100 %) is rejected
-        (LegExecutor.Leg[] memory more, uint256 moreUsdt) = _mintLegsBstockOnly(1e18);
+        (LegExecutor.Leg[] memory more, uint256 moreUsdg) = _mintLegsBstockOnly(1e18);
         vm.startPrank(bob);
-        usdt.approve(address(basket), moreUsdt);
+        usdg.approve(address(basket), moreUsdg);
         vm.expectRevert();
-        basket.mint(1e18, moreUsdt, more, bob, QH);
+        basket.mint(1e18, moreUsdg, more, bob, QH);
 
         // a 70/30 mint dilutes bstock to ~85 %: still over the cap, but strictly better -> allowed
-        (LegExecutor.Leg[] memory split, uint256 splitUsdt) = _mintLegs(1e18);
-        usdt.approve(address(basket), splitUsdt);
-        basket.mint(1e18, splitUsdt, split, bob, QH);
+        (LegExecutor.Leg[] memory split, uint256 splitUsdg) = _mintLegs(1e18);
+        usdg.approve(address(basket), splitUsdg);
+        basket.mint(1e18, splitUsdg, split, bob, QH);
         vm.stopPrank();
         assertEq(basket.balanceOf(bob), 1e18);
         IBasketVault.ConstituentView[] memory comp = basket.composition();
@@ -274,24 +274,24 @@ contract BasketVaultTest is BaseTest {
 
     // ---------------- redeem ----------------
 
-    function test_redeem_toUsdt() public {
+    function test_redeem_toUsdg() public {
         _mintBasket(alice, 10e18);
         uint256 supply = basket.totalSupply();
         uint256 nB = nvdaB.balanceOf(address(basket)) * 4e18 / supply;
         uint256 nO = nvdaOn.balanceOf(address(basket)) * 4e18 / supply;
         uint256 aB = aaplB.balanceOf(address(basket)) * 4e18 / supply;
         LegExecutor.Leg[] memory legs = new LegExecutor.Leg[](3);
-        legs[0] = _leg(address(nvdaB), address(usdt), nB, address(basket));
-        legs[1] = _leg(address(nvdaOn), address(usdt), nO, address(basket));
-        legs[2] = _leg(address(aaplB), address(usdt), aB, address(basket));
-        uint256 before = usdt.balanceOf(alice);
+        legs[0] = _leg(address(nvdaB), address(usdg), nB, address(basket));
+        legs[1] = _leg(address(nvdaOn), address(usdg), nO, address(basket));
+        legs[2] = _leg(address(aaplB), address(usdg), aB, address(basket));
+        uint256 before = usdg.balanceOf(alice);
         vm.prank(alice);
-        uint256 out = basket.redeem(4e18, 150e18, legs, alice, QH);
+        uint256 out = basket.redeem(4e18, 150e6, legs, alice, QH);
         assertEq(basket.balanceOf(alice), 6e18);
-        assertEq(usdt.balanceOf(alice), before + out);
-        assertApproxEqRel(out, 4 * (0.1e18 * 219 + 0.05e18 * 332), 0.01e18);
+        assertEq(usdg.balanceOf(alice), before + out);
+        assertApproxEqRel(out, 4 * (0.1e18 * 219 + 0.05e18 * 332) / USDG_SCALE, 0.01e18);
         assertTrue(basket.backingOk());
-        assertEq(usdt.balanceOf(address(basket)), 0);
+        assertEq(usdg.balanceOf(address(basket)), 0);
     }
 
     function test_redeem_unsoldGoesInKind() public {
@@ -300,7 +300,7 @@ contract BasketVaultTest is BaseTest {
         uint256 nB = nvdaB.balanceOf(address(basket)) * 5e18 / supply;
         uint256 aB = aaplB.balanceOf(address(basket)) * 5e18 / supply;
         // only sell NVDAB; AAPLB comes in kind
-        LegExecutor.Leg[] memory legs = _legs1(_leg(address(nvdaB), address(usdt), nB, address(basket)));
+        LegExecutor.Leg[] memory legs = _legs1(_leg(address(nvdaB), address(usdg), nB, address(basket)));
         vm.prank(alice);
         basket.redeem(5e18, 0, legs, alice, QH);
         assertEq(aaplB.balanceOf(alice), aB);
@@ -313,7 +313,7 @@ contract BasketVaultTest is BaseTest {
         _mintBasket(alice, 10e18);
         _mintBasket(bob, 10e18);
         uint256 all = nvdaB.balanceOf(address(basket));
-        LegExecutor.Leg[] memory legs = _legs1(_leg(address(nvdaB), address(usdt), all, address(basket)));
+        LegExecutor.Leg[] memory legs = _legs1(_leg(address(nvdaB), address(usdg), all, address(basket)));
         vm.prank(alice);
         vm.expectRevert(); // LegExceedsProRata
         basket.redeem(10e18, 0, legs, alice, QH);
@@ -329,19 +329,19 @@ contract BasketVaultTest is BaseTest {
         basket.redeem(1e18, 0, legs, address(0), QH);
         vm.expectRevert(abi.encodeWithSelector(BasketVault.InsufficientUnits.selector, 10e18, 11e18));
         basket.redeem(11e18, 0, legs, alice, QH);
-        vm.expectRevert(); // InsufficientUsdtOut: no legs -> 0 usdt
+        vm.expectRevert(); // InsufficientUsdgOut: no legs -> 0 usdg
         basket.redeem(1e18, 1, legs, alice, QH);
 
         uint256 nB = nvdaB.balanceOf(address(basket)) / 10;
-        legs = _legs1(_leg(address(nvdaB), address(usdt), nB, address(basket)));
+        legs = _legs1(_leg(address(nvdaB), address(usdg), nB, address(basket)));
         legs[0].target = alice;
         vm.expectRevert(abi.encodeWithSelector(BasketVault.TargetNotAllowed.selector, alice));
         basket.redeem(1e18, 0, legs, alice, QH);
         legs = _legs1(_leg(address(nvdaB), address(nvdaOn), nB, address(basket)));
-        vm.expectRevert(abi.encodeWithSelector(BasketVault.LegTokenOutMustBeUsdt.selector, address(nvdaOn)));
+        vm.expectRevert(abi.encodeWithSelector(BasketVault.LegTokenOutMustBeUsdg.selector, address(nvdaOn)));
         basket.redeem(1e18, 0, legs, alice, QH);
-        legs = _legs1(_leg(address(usdt), address(usdt), 1, address(basket)));
-        vm.expectRevert(abi.encodeWithSelector(BasketVault.LegTokenInNotHeld.selector, address(usdt)));
+        legs = _legs1(_leg(address(usdg), address(usdg), 1, address(basket)));
+        vm.expectRevert(abi.encodeWithSelector(BasketVault.LegTokenInNotHeld.selector, address(usdg)));
         basket.redeem(1e18, 0, legs, alice, QH);
         vm.stopPrank();
     }
@@ -374,13 +374,13 @@ contract BasketVaultTest is BaseTest {
         assertGt(aaplB.balanceOf(alice), 0);
     }
 
-    function test_redeemInKind_distributesVaultUsdt() public {
+    function test_redeemInKind_distributesVaultUsdg() public {
         _mintBasket(alice, 10e18);
-        usdt.mint(address(basket), 100e18); // e.g. leftover from a migration
-        uint256 before = usdt.balanceOf(alice);
+        usdg.mint(address(basket), 100e6); // e.g. leftover from a migration
+        uint256 before = usdg.balanceOf(alice);
         vm.prank(alice);
         basket.redeemInKind(5e18, alice);
-        assertEq(usdt.balanceOf(alice), before + 50e18);
+        assertEq(usdg.balanceOf(alice), before + 50e6);
     }
 
     function test_redeemInKind_skipFrozenToken() public {
@@ -428,10 +428,10 @@ contract BasketVaultTest is BaseTest {
         registry.postAttestation(BSTOCK, uint64(block.timestamp));
         uint256 before0 = basket.heldShares(0);
         uint256 before1 = basket.heldShares(1);
-        uint256 usdtOut = venue.quote(address(nvdaOn), address(usdt), sell);
+        uint256 usdgOut = venue.quote(address(nvdaOn), address(usdg), sell);
         LegExecutor.Leg[] memory legs = _legs2(
-            _leg(address(nvdaOn), address(usdt), sell, address(basket)),
-            _leg(address(usdt), address(nvdaB), usdtOut, address(basket))
+            _leg(address(nvdaOn), address(usdg), sell, address(basket)),
+            _leg(address(usdg), address(nvdaB), usdgOut, address(basket))
         );
         vm.prank(bob); // permissionless
         uint256 gain = basket.migrate(NVDA, legs, 1, QH);
@@ -446,10 +446,10 @@ contract BasketVaultTest is BaseTest {
         uint256 held = _setupMigration();
         uint256 sell = held / 4; // move ~7.5 % of NVDA from ondo to bstock: 70 -> ~78 %, still within the 80 % cap
         uint256 before0 = basket.heldShares(0);
-        uint256 usdtOut = venue.quote(address(nvdaOn), address(usdt), sell);
+        uint256 usdgOut = venue.quote(address(nvdaOn), address(usdg), sell);
         LegExecutor.Leg[] memory legs = _legs2(
-            _leg(address(nvdaOn), address(usdt), sell, address(basket)),
-            _leg(address(usdt), address(nvdaB), usdtOut, address(basket))
+            _leg(address(nvdaOn), address(usdg), sell, address(basket)),
+            _leg(address(usdg), address(nvdaB), usdgOut, address(basket))
         );
         vm.prank(bob);
         uint256 gain = basket.migrate(NVDA, legs, 1, QH);
@@ -461,10 +461,10 @@ contract BasketVaultTest is BaseTest {
     function test_migrate_revertsWhenSharesDecrease() public {
         uint256 sell = _setupMigration();
         venue.setPrice(address(nvdaB), NVDA_PX * NVDA_B_MULT / WAD * 105 / 100); // bstock now expensive
-        uint256 usdtOut = venue.quote(address(nvdaOn), address(usdt), sell);
+        uint256 usdgOut = venue.quote(address(nvdaOn), address(usdg), sell);
         LegExecutor.Leg[] memory legs = _legs2(
-            _leg(address(nvdaOn), address(usdt), sell, address(basket)),
-            _leg(address(usdt), address(nvdaB), usdtOut, address(basket))
+            _leg(address(nvdaOn), address(usdg), sell, address(basket)),
+            _leg(address(usdg), address(nvdaB), usdgOut, address(basket))
         );
         vm.prank(bob);
         vm.expectRevert(); // InsufficientShareGain
@@ -473,23 +473,23 @@ contract BasketVaultTest is BaseTest {
 
     function test_migrate_minShareGainEnforced() public {
         uint256 sell = _setupMigration();
-        uint256 usdtOut = venue.quote(address(nvdaOn), address(usdt), sell);
+        uint256 usdgOut = venue.quote(address(nvdaOn), address(usdg), sell);
         LegExecutor.Leg[] memory legs = _legs2(
-            _leg(address(nvdaOn), address(usdt), sell, address(basket)),
-            _leg(address(usdt), address(nvdaB), usdtOut, address(basket))
+            _leg(address(nvdaOn), address(usdg), sell, address(basket)),
+            _leg(address(usdg), address(nvdaB), usdgOut, address(basket))
         );
         vm.prank(bob);
         vm.expectRevert();
         basket.migrate(NVDA, legs, 1e30, QH);
     }
 
-    function test_migrate_cannotDrainUsdt() public {
+    function test_migrate_cannotDrainUsdg() public {
         _setupMigration();
-        usdt.mint(address(basket), 500e18);
-        // try to use vault USDT to buy without selling anything: USDT balance would drop
-        LegExecutor.Leg[] memory legs = _legs1(_leg(address(usdt), address(nvdaB), 500e18, address(basket)));
+        usdg.mint(address(basket), 500e6);
+        // try to use vault USDG to buy without selling anything: USDG balance would drop
+        LegExecutor.Leg[] memory legs = _legs1(_leg(address(usdg), address(nvdaB), 500e6, address(basket)));
         vm.prank(bob);
-        vm.expectRevert(abi.encodeWithSelector(BasketVault.UsdtDecreased.selector, 500e18, 0));
+        vm.expectRevert(abi.encodeWithSelector(BasketVault.UsdgDecreased.selector, 500e6, 0));
         basket.migrate(NVDA, legs, 0, QH);
     }
 
@@ -497,8 +497,8 @@ contract BasketVaultTest is BaseTest {
         _setupMigration();
         uint256 aB = aaplB.balanceOf(address(basket));
         LegExecutor.Leg[] memory legs = _legs2(
-            _leg(address(aaplB), address(usdt), aB, address(basket)),
-            _leg(address(usdt), address(nvdaB), 1e18, address(basket))
+            _leg(address(aaplB), address(usdg), aB, address(basket)),
+            _leg(address(usdg), address(nvdaB), 1e6, address(basket))
         );
         vm.prank(bob);
         vm.expectRevert(abi.encodeWithSelector(BasketVault.MigrateLegOutsideConstituent.selector, address(aaplB)));
@@ -509,10 +509,10 @@ contract BasketVaultTest is BaseTest {
         uint256 sell = _setupMigration();
         vm.prank(admin);
         registry.setRepresentationActive(address(nvdaB), false);
-        uint256 usdtOut = venue.quote(address(nvdaOn), address(usdt), sell);
+        uint256 usdgOut = venue.quote(address(nvdaOn), address(usdg), sell);
         LegExecutor.Leg[] memory legs = _legs2(
-            _leg(address(nvdaOn), address(usdt), sell, address(basket)),
-            _leg(address(usdt), address(nvdaB), usdtOut, address(basket))
+            _leg(address(nvdaOn), address(usdg), sell, address(basket)),
+            _leg(address(usdg), address(nvdaB), usdgOut, address(basket))
         );
         vm.startPrank(bob);
         vm.expectRevert(abi.encodeWithSelector(BasketVault.NotBuyEligible.selector, address(nvdaB)));
@@ -529,8 +529,8 @@ contract BasketVaultTest is BaseTest {
 
         // tokenOut of wrong underlying
         LegExecutor.Leg[] memory bad = _legs2(
-            _leg(address(nvdaOn), address(usdt), sell, address(basket)),
-            _leg(address(usdt), address(aaplB), usdtOut, address(basket))
+            _leg(address(nvdaOn), address(usdg), sell, address(basket)),
+            _leg(address(usdg), address(aaplB), usdgOut, address(basket))
         );
         vm.expectRevert(abi.encodeWithSelector(BasketVault.WrongUnderlying.selector, address(aaplB), NVDA));
         basket.migrate(NVDA, bad, 0, QH);
@@ -541,10 +541,10 @@ contract BasketVaultTest is BaseTest {
         // Move everything into bstock when cap is 80 % and both reps are eligible -> cap exceeded.
         uint256 sell = _setupMigration();
         venue.setPrice(address(nvdaB), NVDA_PX * NVDA_B_MULT / WAD * 90 / 100);
-        uint256 usdtOut = venue.quote(address(nvdaOn), address(usdt), sell);
+        uint256 usdgOut = venue.quote(address(nvdaOn), address(usdg), sell);
         LegExecutor.Leg[] memory legs = _legs2(
-            _leg(address(nvdaOn), address(usdt), sell, address(basket)),
-            _leg(address(usdt), address(nvdaB), usdtOut, address(basket))
+            _leg(address(nvdaOn), address(usdg), sell, address(basket)),
+            _leg(address(usdg), address(nvdaB), usdgOut, address(basket))
         );
         vm.prank(bob);
         vm.expectRevert(); // IssuerCapExceeded
@@ -569,13 +569,13 @@ contract BasketVaultTest is BaseTest {
     }
 
     function test_reentrancy_blocked() public {
-        (LegExecutor.Leg[] memory legs, uint256 maxUsdt) = _mintLegs(1e18);
+        (LegExecutor.Leg[] memory legs, uint256 maxUsdg) = _mintLegs(1e18);
         bytes memory reenter = abi.encodeCall(BasketVault.redeemInKind, (1, alice));
         venue.setMode(MockSwapTarget.Mode.REENTER, reenter);
         vm.startPrank(alice);
-        usdt.approve(address(basket), maxUsdt);
+        usdg.approve(address(basket), maxUsdg);
         vm.expectRevert();
-        basket.mint(1e18, maxUsdt, legs, alice, QH);
+        basket.mint(1e18, maxUsdg, legs, alice, QH);
         vm.stopPrank();
     }
 }

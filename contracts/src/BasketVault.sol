@@ -31,14 +31,14 @@ contract BasketVault is ERC20, ReentrancyGuard, IBasketVault, ReceiptEmitter {
     uint256 internal constant WAD = 1e18;
 
     IStockRegistry public immutable registry;
-    IERC20 public immutable usdt;
+    IERC20 public immutable usdg;
 
     Constituent[] private _constituents;
     mapping(bytes32 => uint256) private _constituentIndexPlusOne;
 
-    event Minted(address indexed recipient, address indexed payer, uint256 units, uint256 usdtSpent, bytes32 quoteHash);
+    event Minted(address indexed recipient, address indexed payer, uint256 units, uint256 usdgSpent, bytes32 quoteHash);
     event Redeemed(
-        address indexed recipient, address indexed holder, uint256 units, uint256 usdtOut, bytes32 quoteHash
+        address indexed recipient, address indexed holder, uint256 units, uint256 usdgOut, bytes32 quoteHash
     );
     event RedeemedInKind(address indexed recipient, address indexed holder, uint256 units);
     event FeeCharged(bytes32 indexed quoteHash, address indexed recipient, uint256 fee);
@@ -55,8 +55,8 @@ contract BasketVault is ERC20, ReentrancyGuard, IBasketVault, ReceiptEmitter {
     error UnderDelivered(bytes32 underlyingId, uint256 delivered, uint256 required);
     error InsufficientForFee(uint256 leftover, uint256 fee);
     error TargetNotAllowed(address target);
-    error LegTokenInMustBeUsdt(address tokenIn);
-    error LegTokenOutMustBeUsdt(address tokenOut);
+    error LegTokenInMustBeUsdg(address tokenIn);
+    error LegTokenOutMustBeUsdg(address tokenOut);
     error LegTokenInNotHeld(address tokenIn);
     error LegExceedsProRata(address tokenIn, uint256 maxIn, uint256 remaining);
     error NotBuyEligible(address token);
@@ -64,11 +64,11 @@ contract BasketVault is ERC20, ReentrancyGuard, IBasketVault, ReceiptEmitter {
     error WrongUnderlying(address token, bytes32 expected);
     error BackingViolated(bytes32 underlyingId, uint256 held, uint256 required);
     error IssuerCapExceeded(bytes32 underlyingId, bytes32 platformId, uint256 platformShares, uint256 held);
-    error OverSpent(uint256 spent, uint256 maxUsdtIn);
-    error InsufficientUsdtOut(uint256 usdtOut, uint256 minUsdtOut);
+    error OverSpent(uint256 spent, uint256 maxUsdgIn);
+    error InsufficientUsdgOut(uint256 usdgOut, uint256 minUsdgOut);
     error InsufficientShareGain(uint256 gain, uint256 minShareGain);
     error ConstituentDecreased(bytes32 underlyingId, uint256 before, uint256 after_);
-    error UsdtDecreased(uint256 before, uint256 after_);
+    error UsdgDecreased(uint256 before, uint256 after_);
     error InsufficientUnits(uint256 have, uint256 want);
     error MigrateLegOutsideConstituent(address token);
 
@@ -80,7 +80,7 @@ contract BasketVault is ERC20, ReentrancyGuard, IBasketVault, ReceiptEmitter {
     ) ERC20(name_, symbol_) {
         if (constituents_.length == 0) revert NoConstituents();
         registry = registry_;
-        usdt = IERC20(registry_.usdt());
+        usdg = IERC20(registry_.usdg());
         for (uint256 i = 0; i < constituents_.length; i++) {
             Constituent memory c = constituents_[i];
             if (c.sharesPerUnit == 0) revert ZeroSharesPerUnit(c.underlyingId);
@@ -101,45 +101,45 @@ contract BasketVault is ERC20, ReentrancyGuard, IBasketVault, ReceiptEmitter {
     ///      built up, pay no fee, and skip the buy-eligibility gate with empty legs.
     function mint(
         uint256 units,
-        uint256 maxUsdtIn,
+        uint256 maxUsdgIn,
         LegExecutor.Leg[] calldata legs,
         address recipient,
         bytes32 quoteHash
-    ) external override nonReentrant returns (uint256 usdtSpent) {
-        if (units == 0 || maxUsdtIn == 0) revert ZeroAmount();
+    ) external override nonReentrant returns (uint256 usdgSpent) {
+        if (units == 0 || maxUsdgIn == 0) revert ZeroAmount();
         if (recipient == address(0)) revert ZeroAddress();
         if (legs.length == 0) revert NoLegs();
 
-        usdt.safeTransferFrom(msg.sender, address(this), maxUsdtIn);
-        uint256 usdtBefore = usdt.balanceOf(address(this));
+        usdg.safeTransferFrom(msg.sender, address(this), maxUsdgIn);
+        uint256 usdgBefore = usdg.balanceOf(address(this));
         (uint256[] memory heldBefore, uint256[][] memory platformBefore) = _snapshotHoldings();
 
         for (uint256 i = 0; i < legs.length; i++) {
             LegExecutor.Leg memory leg = legs[i];
             if (!registry.isAllowedTarget(leg.target)) revert TargetNotAllowed(leg.target);
-            if (leg.tokenIn != address(usdt)) revert LegTokenInMustBeUsdt(leg.tokenIn);
+            if (leg.tokenIn != address(usdg)) revert LegTokenInMustBeUsdg(leg.tokenIn);
             if (!registry.isBuyEligible(leg.tokenOut)) revert NotBuyEligible(leg.tokenOut);
             bytes32 uid = registry.underlyingOf(leg.tokenOut);
             if (_constituentIndexPlusOne[uid] == 0) revert NotAConstituent(leg.tokenOut);
 
             (uint256 spent, uint256 received) = leg.execute();
-            _emitReceipt(quoteHash, uid, address(usdt), spent, leg.tokenOut, received, ACTION_MINT);
+            _emitReceipt(quoteHash, uid, address(usdg), spent, leg.tokenOut, received, ACTION_MINT);
         }
 
-        usdtSpent = usdtBefore - usdt.balanceOf(address(this));
-        if (usdtSpent > maxUsdtIn) revert OverSpent(usdtSpent, maxUsdtIn);
+        usdgSpent = usdgBefore - usdg.balanceOf(address(this));
+        if (usdgSpent > maxUsdgIn) revert OverSpent(usdgSpent, maxUsdgIn);
 
         _mint(recipient, units);
         _checkDelivered(units, heldBefore);
         _checkAllBacking();
         _checkAllIssuerCaps(heldBefore, platformBefore);
 
-        // fee on the notional spent, out of the unspent remainder; the quote sizes maxUsdtIn to cover it
-        uint256 refund = maxUsdtIn - usdtSpent;
-        refund -= _chargeFee(usdtSpent, refund, quoteHash);
-        if (refund > 0) usdt.safeTransfer(msg.sender, refund);
+        // fee on the notional spent, out of the unspent remainder; the quote sizes maxUsdgIn to cover it
+        uint256 refund = maxUsdgIn - usdgSpent;
+        refund -= _chargeFee(usdgSpent, refund, quoteHash);
+        if (refund > 0) usdg.safeTransfer(msg.sender, refund);
 
-        emit Minted(recipient, msg.sender, units, usdtSpent, quoteHash);
+        emit Minted(recipient, msg.sender, units, usdgSpent, quoteHash);
     }
 
     // ------------------------------------------------------------------
@@ -149,25 +149,25 @@ contract BasketVault is ERC20, ReentrancyGuard, IBasketVault, ReceiptEmitter {
     /// @inheritdoc IBasketVault
     function redeem(
         uint256 units,
-        uint256 minUsdtOut,
+        uint256 minUsdgOut,
         LegExecutor.Leg[] calldata legs,
         address recipient,
         bytes32 quoteHash
-    ) external override nonReentrant returns (uint256 usdtOut) {
+    ) external override nonReentrant returns (uint256 usdgOut) {
         if (units == 0) revert ZeroAmount();
         if (recipient == address(0)) revert ZeroAddress();
         uint256 have = balanceOf(msg.sender);
         if (have < units) revert InsufficientUnits(have, units);
 
-        (address[] memory tokens, uint256[] memory remaining, uint256 usdtShare) =
+        (address[] memory tokens, uint256[] memory remaining, uint256 usdgShare) =
             _proRataHoldings(units, totalSupply());
         _burn(msg.sender, units);
 
-        uint256 usdtBefore = usdt.balanceOf(address(this));
+        uint256 usdgBefore = usdg.balanceOf(address(this));
         for (uint256 i = 0; i < legs.length; i++) {
             LegExecutor.Leg memory leg = legs[i];
             if (!registry.isAllowedTarget(leg.target)) revert TargetNotAllowed(leg.target);
-            if (leg.tokenOut != address(usdt)) revert LegTokenOutMustBeUsdt(leg.tokenOut);
+            if (leg.tokenOut != address(usdg)) revert LegTokenOutMustBeUsdg(leg.tokenOut);
             uint256 j = _indexOfToken(tokens, leg.tokenIn);
             if (remaining[j] == 0) revert LegTokenInNotHeld(leg.tokenIn);
             if (leg.maxIn > remaining[j]) revert LegExceedsProRata(leg.tokenIn, leg.maxIn, remaining[j]);
@@ -179,34 +179,34 @@ contract BasketVault is ERC20, ReentrancyGuard, IBasketVault, ReceiptEmitter {
                 registry.underlyingOf(leg.tokenIn),
                 leg.tokenIn,
                 spent,
-                address(usdt),
+                address(usdg),
                 received,
                 ACTION_REDEEM
             );
         }
 
-        usdtOut = (usdt.balanceOf(address(this)) - usdtBefore) + usdtShare;
-        usdtOut -= _chargeFee(usdtOut, usdtOut, quoteHash); // minUsdtOut is net of the fee
-        if (usdtOut < minUsdtOut) revert InsufficientUsdtOut(usdtOut, minUsdtOut);
-        if (usdtOut > 0) usdt.safeTransfer(recipient, usdtOut);
+        usdgOut = (usdg.balanceOf(address(this)) - usdgBefore) + usdgShare;
+        usdgOut -= _chargeFee(usdgOut, usdgOut, quoteHash); // minUsdgOut is net of the fee
+        if (usdgOut < minUsdgOut) revert InsufficientUsdgOut(usdgOut, minUsdgOut);
+        if (usdgOut > 0) usdg.safeTransfer(recipient, usdgOut);
 
         // Anything not sold by the legs goes out in kind: no dust trapped.
         for (uint256 j = 0; j < tokens.length; j++) {
             if (remaining[j] > 0) IERC20(tokens[j]).safeTransfer(recipient, remaining[j]);
         }
 
-        emit Redeemed(recipient, msg.sender, units, usdtOut, quoteHash);
+        emit Redeemed(recipient, msg.sender, units, usdgOut, quoteHash);
     }
 
     /// @dev Pay the registry's fee on `notional` out of `available`; returns the fee taken (0 when unset).
-    ///      Only USDT flows carry it: shares, backing and in-kind redemption are never touched.
+    ///      Only USDG flows carry it: shares, backing and in-kind redemption are never touched.
     function _chargeFee(uint256 notional, uint256 available, bytes32 quoteHash) internal returns (uint256 fee) {
         (uint16 bps, address to) = registry.fee();
         if (bps == 0) return 0;
         fee = (notional * bps) / 10_000;
         if (fee == 0) return 0;
         if (fee > available) revert InsufficientForFee(available, fee);
-        usdt.safeTransfer(to, fee);
+        usdg.safeTransfer(to, fee);
         emit FeeCharged(quoteHash, to, fee);
     }
 
@@ -227,14 +227,14 @@ contract BasketVault is ERC20, ReentrancyGuard, IBasketVault, ReceiptEmitter {
         uint256 have = balanceOf(msg.sender);
         if (have < units) revert InsufficientUnits(have, units);
 
-        (address[] memory tokens, uint256[] memory amounts, uint256 usdtShare) = _proRataHoldings(units, totalSupply());
+        (address[] memory tokens, uint256[] memory amounts, uint256 usdgShare) = _proRataHoldings(units, totalSupply());
         _burn(msg.sender, units);
 
         for (uint256 j = 0; j < tokens.length; j++) {
             if (amounts[j] == 0 || _contains(skip, tokens[j])) continue;
             IERC20(tokens[j]).safeTransfer(recipient, amounts[j]);
         }
-        if (usdtShare > 0 && !_contains(skip, address(usdt))) usdt.safeTransfer(recipient, usdtShare);
+        if (usdgShare > 0 && !_contains(skip, address(usdg))) usdg.safeTransfer(recipient, usdgShare);
 
         emit RedeemedInKind(recipient, msg.sender, units);
     }
@@ -260,7 +260,7 @@ contract BasketVault is ERC20, ReentrancyGuard, IBasketVault, ReceiptEmitter {
         for (uint256 i = 0; i < n; i++) {
             before[i] = heldShares(i);
         }
-        uint256 usdtBefore = usdt.balanceOf(address(this));
+        uint256 usdgBefore = usdg.balanceOf(address(this));
         (uint256[] memory platformBefore,) = _platformSharesOf(idx);
 
         for (uint256 i = 0; i < legs.length; i++) {
@@ -276,24 +276,24 @@ contract BasketVault is ERC20, ReentrancyGuard, IBasketVault, ReceiptEmitter {
             uint256 a = heldShares(i);
             if (a < before[i]) revert ConstituentDecreased(_constituents[i].underlyingId, before[i], a);
         }
-        uint256 usdtAfter = usdt.balanceOf(address(this));
-        if (usdtAfter < usdtBefore) revert UsdtDecreased(usdtBefore, usdtAfter);
+        uint256 usdgAfter = usdg.balanceOf(address(this));
+        if (usdgAfter < usdgBefore) revert UsdgDecreased(usdgBefore, usdgAfter);
         _checkIssuerCap(idx, before[idx], platformBefore);
         _checkBacking(idx);
 
         emit Migrated(underlyingId, msg.sender, shareGain, quoteHash);
     }
 
-    /// @dev One migration leg: tokenIn is vault USDT or any registered representation of *this* constituent;
-    ///      tokenOut is USDT or a buy-eligible representation of it. Split out to keep `migrate`'s stack shallow.
+    /// @dev One migration leg: tokenIn is vault USDG or any registered representation of *this* constituent;
+    ///      tokenOut is USDG or a buy-eligible representation of it. Split out to keep `migrate`'s stack shallow.
     function _runMigrateLeg(LegExecutor.Leg memory leg, bytes32 underlyingId, bytes32 quoteHash) internal {
         if (!registry.isAllowedTarget(leg.target)) revert TargetNotAllowed(leg.target);
-        if (leg.tokenIn != address(usdt)) {
+        if (leg.tokenIn != address(usdg)) {
             if (!registry.isSellEligible(leg.tokenIn) || registry.underlyingOf(leg.tokenIn) != underlyingId) {
                 revert MigrateLegOutsideConstituent(leg.tokenIn);
             }
         }
-        if (leg.tokenOut != address(usdt)) {
+        if (leg.tokenOut != address(usdg)) {
             if (!registry.isBuyEligible(leg.tokenOut)) revert NotBuyEligible(leg.tokenOut);
             if (registry.underlyingOf(leg.tokenOut) != underlyingId) {
                 revert WrongUnderlying(leg.tokenOut, underlyingId);
@@ -480,11 +480,11 @@ contract BasketVault is ERC20, ReentrancyGuard, IBasketVault, ReceiptEmitter {
         }
     }
 
-    /// @dev All representation tokens across constituents with the pro-rata slice for `units`, plus USDT slice.
+    /// @dev All representation tokens across constituents with the pro-rata slice for `units`, plus USDG slice.
     function _proRataHoldings(uint256 units, uint256 supply)
         internal
         view
-        returns (address[] memory tokens, uint256[] memory amounts, uint256 usdtShare)
+        returns (address[] memory tokens, uint256[] memory amounts, uint256 usdgShare)
     {
         uint256 count;
         uint256 n = _constituents.length;
@@ -503,7 +503,7 @@ contract BasketVault is ERC20, ReentrancyGuard, IBasketVault, ReceiptEmitter {
                 k++;
             }
         }
-        usdtShare = ShareMath.proRata(usdt.balanceOf(address(this)), units, supply);
+        usdgShare = ShareMath.proRata(usdg.balanceOf(address(this)), units, supply);
     }
 
     function _indexOfToken(address[] memory tokens, address token) internal pure returns (uint256) {
@@ -529,7 +529,7 @@ contract BasketVault is ERC20, ReentrancyGuard, IBasketVault, ReceiptEmitter {
         uint256 amountOut,
         uint8 action
     ) internal {
-        bool sellLeg = tokenOut == address(usdt);
+        bool sellLeg = tokenOut == address(usdg);
         _emitRouteReceipt(
             registry,
             Receipt({

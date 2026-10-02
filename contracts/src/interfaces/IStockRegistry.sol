@@ -42,7 +42,7 @@ interface IStockRegistry {
     }
 
     // ---- views used by router / vaults ----
-    function usdt() external view returns (address);
+    function usdg() external view returns (address);
     function isAllowedTarget(address target) external view returns (bool);
     function representationsOf(bytes32 underlyingId) external view returns (address[] memory);
     function getRepresentation(address token) external view returns (Representation memory);
@@ -63,6 +63,6 @@ interface IStockRegistry {
     ///         (0, 0) when neither exists. Used by AgentMandate for its execution floor; never for backing.
     function referencePrice(bytes32 underlyingId) external view returns (uint256 priceUsd, uint64 updatedAt);
     function maxPriceAge() external view returns (uint64);
-    /// @notice Protocol fee on USDT notional (bps, hard-capped at MAX_FEE_BPS) and where it is paid.
+    /// @notice Protocol fee on USDG notional (bps, hard-capped at MAX_FEE_BPS) and where it is paid.
     function fee() external view returns (uint16 bps, address recipient);
 }

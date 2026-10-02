@@ -6,7 +6,7 @@ import {LegExecutor} from "../libraries/LegExecutor.sol";
 interface IShareRouter {
     function buyShares(
         bytes32 underlyingId,
-        uint256 usdtIn,
+        uint256 usdgIn,
         uint256 minShares,
         LegExecutor.Leg[] calldata legs,
         address recipient,
@@ -17,9 +17,9 @@ interface IShareRouter {
         bytes32 underlyingId,
         address representation,
         uint256 tokenAmount,
-        uint256 minUsdtOut,
+        uint256 minUsdgOut,
         LegExecutor.Leg[] calldata legs,
         address recipient,
         bytes32 quoteHash
-    ) external returns (uint256 usdtOut);
+    ) external returns (uint256 usdgOut);
 }

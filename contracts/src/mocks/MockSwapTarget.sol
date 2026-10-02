@@ -5,7 +5,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
-/// @notice Deterministic swap venue for tests and BSC testnet. Prices are USD per raw token (1e18).
+/// @notice Deterministic swap venue for tests and local chains. A price is 1e18-scaled USD per 1e18 raw units, so
+///         an 18-decimal token at $219 is 219e18 and 6-decimal USDG at $1 is 1e30.
 ///         `mode` lets tests make it adversarial: return nothing, pull more than asked, reenter the caller, revert.
 ///         Prices, fee and mode can only be set by the owner or the keeper, so a public testnet venue whose
 ///         prices mirror mainnet cannot be re-priced by a stranger.
@@ -21,7 +22,7 @@ contract MockSwapTarget {
         SKIM_HALF // takes input, returns half the fair output (slippage attack)
     }
 
-    mapping(address => uint256) public price; // 1e18 USD per token unit
+    mapping(address => uint256) public price; // 1e18 USD per 1e18 raw units of the token
     uint16 public feeBps;
     Mode public mode;
     bytes public reenterData;

@@ -6,17 +6,17 @@ import {Test} from "forge-std/Test.sol";
 import {BasketVault} from "../../src/BasketVault.sol";
 import {StockRegistry} from "../../src/StockRegistry.sol";
 import {LegExecutor} from "../../src/libraries/LegExecutor.sol";
-import {MockUSDT} from "../../src/mocks/MockUSDT.sol";
+import {MockUSDG} from "../../src/mocks/MockUSDG.sol";
 import {MockStockToken} from "../../src/mocks/MockStockToken.sol";
 import {MockSwapTarget} from "../../src/mocks/MockSwapTarget.sol";
 
-/// @dev Randomly mints, redeems (USDT and in kind), migrates, moves venue prices, drifts multipliers, posts
+/// @dev Randomly mints, redeems (USDG and in kind), migrates, moves venue prices, drifts multipliers, posts
 ///      keeper ratios and pauses buys. Records whether in-kind redemption ever failed and whether a migration
 ///      ever succeeded while reducing shares.
 contract VaultHandler is Test {
     BasketVault public basket;
     StockRegistry public registry;
-    MockUSDT public usdt;
+    MockUSDG public usdg;
     MockStockToken public nvdaOn;
     MockStockToken public nvdaB;
     MockStockToken public aaplB;
@@ -35,11 +35,12 @@ contract VaultHandler is Test {
     uint256 public migrations;
 
     uint256 constant WAD = 1e18;
+    uint256 constant USDG_SCALE = 1e12; // 1e18-scaled USD per raw unit of 6-decimal USDG
 
     constructor(
         BasketVault b,
         StockRegistry r,
-        MockUSDT u,
+        MockUSDG u,
         MockStockToken on,
         MockStockToken nb,
         MockStockToken ab,
@@ -49,7 +50,7 @@ contract VaultHandler is Test {
     ) {
         basket = b;
         registry = r;
-        usdt = u;
+        usdg = u;
         nvdaOn = on;
         nvdaB = nb;
         aaplB = ab;
@@ -59,7 +60,7 @@ contract VaultHandler is Test {
         for (uint256 i = 0; i < 4; i++) {
             address a = address(uint160(0xA11CE + i));
             actors.push(a);
-            usdt.mint(a, 1e27);
+            usdg.mint(a, 1_000_000_000e6);
         }
     }
 
@@ -67,12 +68,14 @@ contract VaultHandler is Test {
         return actors[seed % actors.length];
     }
 
-    function _usdtFor(address token, uint256 shares) internal view returns (uint256) {
+    function _usdgFor(address token, uint256 shares) internal view returns (uint256) {
         (uint256 ratio,) = registry.ratioOf(token);
         uint256 tokens = shares * WAD / ratio + 1;
         uint256 usd = tokens * venue.price(token) / WAD;
         (uint16 protocolFee,) = registry.fee();
-        return usd * (10_000 + venue.feeBps() + protocolFee + 10) / 10_000 + 1;
+        // 1e18-scaled USD down to 6-decimal USDG, rounded up so the leg never falls short
+        uint256 usdWithHeadroom = usd * (10_000 + venue.feeBps() + protocolFee + 10) / 10_000 + 1;
+        return (usdWithHeadroom + USDG_SCALE - 1) / USDG_SCALE;
     }
 
     function _leg(address tokenIn, address tokenOut, uint256 amountIn) internal view returns (LegExecutor.Leg memory) {
@@ -90,28 +93,28 @@ contract VaultHandler is Test {
     function _mintLegs(uint256 units, uint256 ondoBps)
         internal
         view
-        returns (LegExecutor.Leg[] memory use, uint256 maxUsdt)
+        returns (LegExecutor.Leg[] memory use, uint256 maxUsdg)
     {
         uint256 nvdaShares = units * 0.1e18 / WAD + 1;
         uint256 sO = nvdaShares * ondoBps / 10_000;
-        uint256 uB = _usdtFor(address(nvdaB), nvdaShares - sO + 1);
-        uint256 uA = _usdtFor(address(aaplB), units * 0.05e18 / WAD + 1);
-        uint256 uO = sO == 0 ? 0 : _usdtFor(address(nvdaOn), sO + 1);
+        uint256 uB = _usdgFor(address(nvdaB), nvdaShares - sO + 1);
+        uint256 uA = _usdgFor(address(aaplB), units * 0.05e18 / WAD + 1);
+        uint256 uO = sO == 0 ? 0 : _usdgFor(address(nvdaOn), sO + 1);
         use = new LegExecutor.Leg[](uO > 0 ? 3 : 2);
-        use[0] = _leg(address(usdt), address(nvdaB), uB);
-        use[1] = _leg(address(usdt), address(aaplB), uA);
-        if (uO > 0) use[2] = _leg(address(usdt), address(nvdaOn), uO);
-        maxUsdt = uB + uO + uA;
+        use[0] = _leg(address(usdg), address(nvdaB), uB);
+        use[1] = _leg(address(usdg), address(aaplB), uA);
+        if (uO > 0) use[2] = _leg(address(usdg), address(nvdaOn), uO);
+        maxUsdg = uB + uO + uA;
     }
 
     function mint(uint256 seed, uint256 units, uint256 ondoBps) external {
         units = bound(units, 1e15, 100e18);
         ondoBps = bound(ondoBps, 0, 3_000); // keep bstock <= 80 % when both eligible
         address who = _actor(seed);
-        (LegExecutor.Leg[] memory use, uint256 maxUsdt) = _mintLegs(units, ondoBps);
+        (LegExecutor.Leg[] memory use, uint256 maxUsdg) = _mintLegs(units, ondoBps);
         vm.startPrank(who);
-        usdt.approve(address(basket), maxUsdt);
-        try basket.mint(units, maxUsdt, use, who, bytes32(seed)) {
+        usdg.approve(address(basket), maxUsdg);
+        try basket.mint(units, maxUsdg, use, who, bytes32(seed)) {
             mints++;
             if (!basket.backingOk()) backingBrokenByVaultCall = true;
         } catch {}
@@ -125,9 +128,9 @@ contract VaultHandler is Test {
         units = bound(units, 1, bal);
         uint256 supply = basket.totalSupply();
         LegExecutor.Leg[] memory legs = new LegExecutor.Leg[](3);
-        legs[0] = _leg(address(nvdaB), address(usdt), nvdaB.balanceOf(address(basket)) * units / supply);
-        legs[1] = _leg(address(nvdaOn), address(usdt), nvdaOn.balanceOf(address(basket)) * units / supply);
-        legs[2] = _leg(address(aaplB), address(usdt), aaplB.balanceOf(address(basket)) * units / supply);
+        legs[0] = _leg(address(nvdaB), address(usdg), nvdaB.balanceOf(address(basket)) * units / supply);
+        legs[1] = _leg(address(nvdaOn), address(usdg), nvdaOn.balanceOf(address(basket)) * units / supply);
+        legs[2] = _leg(address(aaplB), address(usdg), aaplB.balanceOf(address(basket)) * units / supply);
         // drop zero-amount legs
         uint256 n;
         for (uint256 i = 0; i < 3; i++) {
@@ -165,10 +168,10 @@ contract VaultHandler is Test {
         address to = toBstock ? address(nvdaB) : address(nvdaOn);
         uint256 amt = MockStockToken(from).balanceOf(address(basket)) * fraction / 10_000;
         if (amt == 0) return;
-        uint256 usdtOut = venue.quote(from, address(usdt), amt);
+        uint256 usdgOut = venue.quote(from, address(usdg), amt);
         LegExecutor.Leg[] memory legs = new LegExecutor.Leg[](2);
-        legs[0] = _leg(from, address(usdt), amt);
-        legs[1] = _leg(address(usdt), to, usdtOut);
+        legs[0] = _leg(from, address(usdg), amt);
+        legs[1] = _leg(address(usdg), to, usdgOut);
         uint256 before0 = basket.heldShares(0);
         uint256 before1 = basket.heldShares(1);
         vm.prank(_actor(seed));
@@ -224,10 +227,10 @@ contract BasketVaultInvariants is BaseTest {
 
     function setUp() public override {
         super.setUp();
-        // the protocol fee is on for the whole run: it is a USDT flow only and must never move backing
+        // the protocol fee is on for the whole run: it is a USDG flow only and must never move backing
         vm.prank(admin);
         registry.setFee(50, makeAddr("treasury"));
-        handler = new VaultHandler(basket, registry, usdt, nvdaOn, nvdaB, aaplB, venue, keeper, guardian);
+        handler = new VaultHandler(basket, registry, usdg, nvdaOn, nvdaB, aaplB, venue, keeper, guardian);
         // the handler plays issuer and venue operator, so its price moves and multiplier drifts actually land
         // (with fail_on_revert = false an unauthorized call would be silently skipped, not exercised)
         venue.setKeeper(address(handler));
@@ -270,7 +273,7 @@ contract BasketVaultInvariants is BaseTest {
         assertFalse(handler.migrateDecreasedOther(), "migrate decreased another constituent");
     }
 
-    /// The vault never holds USDT it did not receive from a leg or donation: no user USDT is trapped after mint.
+    /// The vault never holds USDG it did not receive from a leg or donation: no user USDG is trapped after mint.
     function invariant_supplyMatchesHolders() public view {
         uint256 sum;
         for (uint256 i = 0; i < handler.actorCount(); i++) {

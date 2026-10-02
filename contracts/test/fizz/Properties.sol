@@ -48,17 +48,17 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
         ghosts.lastBuysPaused = paused;
     }
 
-    /// @dev GL-05: accrues the USDT the fee recipient gained this call. Called by a single line from the four
+    /// @dev GL-05: accrues the USDG the fee recipient gained this call. Called by a single line from the four
     ///      fee-charging handlers, right after `snapshotAfter()`.
     function _recordFeePaid() internal {
-        ghosts.feePaid += stateAfter.feeRecipientUsdt - stateBefore.feeRecipientUsdt;
+        ghosts.feePaid += stateAfter.feeRecipientUsdg - stateBefore.feeRecipientUsdg;
     }
 
     /// @dev S5, exact: the fee the recipient gained in this call is floor(notional × bps / 10_000) at the
-    ///      registry's current setting — no more, no less (`notional` is the USDT the trade actually moved).
+    ///      registry's current setting — no more, no less (`notional` is the USDG the trade actually moved).
     function _prop_feeExact(uint256 notional) internal {
         (uint16 bps, address to) = registry.fee();
-        uint256 feeDelta = stateAfter.feeRecipientUsdt - stateBefore.feeRecipientUsdt;
+        uint256 feeDelta = stateAfter.feeRecipientUsdg - stateBefore.feeRecipientUsdg;
         if (to != feeRecipient) {
             eq(feeDelta, 0, "S5: no fee flows to the harness recipient while another (or none) is set");
             return;
@@ -107,10 +107,10 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
         eq(basket.totalSupply(), sum, "GL-02: totalSupply does not equal the sum of all known holders");
     }
 
-    /// @notice GL-03: between calls, ShareRouter holds, for USDT and every representation, exactly the
+    /// @notice GL-03: between calls, ShareRouter holds, for USDG and every representation, exactly the
     ///         cumulative amount ever donated to it directly.
     function property_routerHoldsOnlyDonations() public {
-        eq(usdt.balanceOf(address(router)), ghosts.routerDonated[address(usdt)], "GL-03: router USDT is not only donations");
+        eq(usdg.balanceOf(address(router)), ghosts.routerDonated[address(usdg)], "GL-03: router USDG is not only donations");
         for (uint256 i = 0; i < reps.length; i++) {
             eq(
                 IERC20(reps[i]).balanceOf(address(router)),
@@ -120,20 +120,20 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
         }
     }
 
-    /// @notice GL-04: between calls, AgentMandate holds exactly the cumulative USDT ever donated to it directly
+    /// @notice GL-04: between calls, AgentMandate holds exactly the cumulative USDG ever donated to it directly
     ///         (no donation path exists yet for reps/basket units, so those stay at zero by construction).
     function property_mandateHoldsOnlyDonations() public {
-        eq(usdt.balanceOf(address(mandate)), ghosts.mandateDonated[address(usdt)], "GL-04: mandate USDT is not only donations");
+        eq(usdg.balanceOf(address(mandate)), ghosts.mandateDonated[address(usdg)], "GL-04: mandate USDG is not only donations");
     }
 
-    /// @notice GL-05: the cumulative USDT the fee recipient has ever gained equals the sum of every fee
+    /// @notice GL-05: the cumulative USDG the fee recipient has ever gained equals the sum of every fee
     ///         charged by ShareRouter.buyShares/sellShares and BasketVault.mint/redeem.
     /// @dev Fees also flow from the mandate and round-trip handlers, which do not go through `_recordFeePaid`;
     ///      the ledger is therefore a floor, and the exact per-call identity lives in `_prop_feeExact`.
     function property_feeRecipientBalanceMatchesChargedFees() public {
-        gte(usdt.balanceOf(feeRecipient), ghosts.feePaid, "GL-05: fee recipient holds less than the fees recorded");
-        t(usdt.balanceOf(feeRecipient) >= ghosts.feeRecipientHigh, "GL-05: fee recipient balance decreased");
-        ghosts.feeRecipientHigh = usdt.balanceOf(feeRecipient);
+        gte(usdg.balanceOf(feeRecipient), ghosts.feePaid, "GL-05: fee recipient holds less than the fees recorded");
+        t(usdg.balanceOf(feeRecipient) >= ghosts.feeRecipientHigh, "GL-05: fee recipient balance decreased");
+        ghosts.feeRecipientHigh = usdg.balanceOf(feeRecipient);
     }
 
     /// @notice GL-06: within a fixed window (windowStart unchanged), AgentMandate.spentInWindow never falls and
@@ -145,7 +145,7 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
         for (uint256 k = 0; k < ghosts.allMandateIds.length; k++) {
             uint256 id = ghosts.allMandateIds[k];
             AgentMandate.Mandate memory m = mandate.getMandate(id);
-            lte(m.spentInWindow, m.dailyCapUsdt, "GL-06: spentInWindow exceeds dailyCap");
+            lte(m.spentInWindow, m.dailyCapUsdg, "GL-06: spentInWindow exceeds dailyCap");
             uint64 lastStart = ghosts.mandateWindowStart[id];
             if (lastStart != 0 && m.windowStart == lastStart) {
                 gte(m.spentInWindow, ghosts.mandateWindowSpend[id], "GL-06: spentInWindow fell within an unchanged window");
@@ -307,24 +307,24 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
         }
     }
 
-    /// @notice GL-18: AgentMandate.sharesFloor/unitsFloor are zero-input safe and non-decreasing in usdtSpent.
+    /// @notice GL-18: AgentMandate.sharesFloor/unitsFloor are zero-input safe and non-decreasing in usdgSpent.
     ///         Evaluated against mandate id 0 (never created by createMandate, so maxSlippageBps==0), which
     ///         still exercises the formula against the registry's live reference price.
     function property_agentMandate_floorsMonotonicAndZeroSafe() public {
         try mandate.sharesFloor(0, NVDA, 0) returns (uint256 floorZero) {
             eq(floorZero, 0, "GL-18: sharesFloor(0) != 0");
-            try mandate.sharesFloor(0, NVDA, 1e18) returns (uint256 floorSmall) {
-                try mandate.sharesFloor(0, NVDA, 2e18) returns (uint256 floorLarge) {
-                    gte(floorLarge, floorSmall, "GL-18: sharesFloor is not non-decreasing in usdtSpent");
+            try mandate.sharesFloor(0, NVDA, 1e6) returns (uint256 floorSmall) {
+                try mandate.sharesFloor(0, NVDA, 2e6) returns (uint256 floorLarge) {
+                    gte(floorLarge, floorSmall, "GL-18: sharesFloor is not non-decreasing in usdgSpent");
                 } catch {}
             } catch {}
         } catch {}
 
         try mandate.unitsFloor(0, address(basket), 0) returns (uint256 uFloorZero) {
             eq(uFloorZero, 0, "GL-18: unitsFloor(0) != 0");
-            try mandate.unitsFloor(0, address(basket), 1e18) returns (uint256 uFloorSmall) {
-                try mandate.unitsFloor(0, address(basket), 2e18) returns (uint256 uFloorLarge) {
-                    gte(uFloorLarge, uFloorSmall, "GL-18: unitsFloor is not non-decreasing in usdtSpent");
+            try mandate.unitsFloor(0, address(basket), 1e6) returns (uint256 uFloorSmall) {
+                try mandate.unitsFloor(0, address(basket), 2e6) returns (uint256 uFloorLarge) {
+                    gte(uFloorLarge, uFloorSmall, "GL-18: unitsFloor is not non-decreasing in usdgSpent");
                 } catch {}
             } catch {}
         } catch {}
@@ -460,11 +460,11 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
     }
 
     /// @notice GL-30: outside of an in-flight call, no allowlisted swap target holds a nonzero ERC-20
-    ///         allowance from the router, the vault, or the mandate contract, for USDT or any representation.
+    ///         allowance from the router, the vault, or the mandate contract, for USDG or any representation.
     function property_noDanglingApprovalToVenue() public {
         address[3] memory spenders = [address(router), address(basket), address(mandate)];
         for (uint256 s = 0; s < spenders.length; s++) {
-            eq(usdt.allowance(spenders[s], address(venue)), 0, "GL-30: dangling USDT approval to the venue");
+            eq(usdg.allowance(spenders[s], address(venue)), 0, "GL-30: dangling USDG approval to the venue");
             for (uint256 i = 0; i < reps.length; i++) {
                 eq(
                     IERC20(reps[i]).allowance(spenders[s], address(venue)),
@@ -548,10 +548,10 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
     // ---- ShareRouter ----
 
     function _prop_buyShares(
-        uint256 usdtIn,
+        uint256 usdgIn,
         uint256 minShares,
         uint256 sharesOut,
-        uint256 usdtBefore,
+        uint256 usdgBefore,
         uint256 sharesBefore,
         address rep,
         address recipient,
@@ -559,41 +559,41 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
     ) internal {
         gte(sharesOut, minShares, "R1: sharesOut >= minShares");
         t(shape != 2 && shape != 3, "R2/L3: misdirected or wrong-underlying legs must revert, not succeed");
-        uint256 spent = usdtBefore - usdt.balanceOf(actor);
-        lte(spent, usdtIn, "R3: caller pays at most usdtIn");
+        uint256 spent = usdgBefore - usdg.balanceOf(actor);
+        lte(spent, usdgIn, "R3: caller pays at most usdgIn");
         // shares credited to the recipient by the registry's live ratio are what the router reported
         if (shape == 0 && recipient == actor) {
             gte(_sharesHeld(rep, recipient) - sharesBefore, sharesOut, "R1: recipient received the reported shares");
         }
-        eq(usdt.balanceOf(address(router)), stateBefore.routerUsdt, "R3: router USDT unchanged by a buy (donations stay put)");
-        eq(usdt.balanceOf(address(router)), ghosts.routerDonated[address(usdt)], "F-5: router holds exactly what was donated");
+        eq(usdg.balanceOf(address(router)), stateBefore.routerUsdg, "R3: router USDG unchanged by a buy (donations stay put)");
+        eq(usdg.balanceOf(address(router)), ghosts.routerDonated[address(usdg)], "F-5: router holds exactly what was donated");
     }
 
     function _prop_sellShares(
         uint256 tokenAmount,
         uint256 legAmount,
-        uint256 minUsdtOut,
-        uint256 usdtOut,
+        uint256 minUsdgOut,
+        uint256 usdgOut,
         uint256 repBefore,
-        uint256 usdtBefore,
+        uint256 usdgBefore,
         address rep,
         address recipient
     ) internal {
-        gte(usdtOut, minUsdtOut, "R1: usdtOut >= minUsdtOut");
+        gte(usdgOut, minUsdgOut, "R1: usdgOut >= minUsdgOut");
         eq(repBefore - IERC20(rep).balanceOf(actor), legAmount, "R3: seller parted with exactly what the legs sold");
-        gte(usdt.balanceOf(recipient) - usdtBefore, usdtOut, "R3: recipient received usdtOut");
+        gte(usdg.balanceOf(recipient) - usdgBefore, usdgOut, "R3: recipient received usdgOut");
         eq(IERC20(rep).balanceOf(address(router)), ghosts.routerDonated[rep], "F-6: router holds exactly the donated rep balance");
-        eq(usdt.balanceOf(address(router)), ghosts.routerDonated[address(usdt)], "F-5: router USDT is only donations");
+        eq(usdg.balanceOf(address(router)), ghosts.routerDonated[address(usdg)], "F-5: router USDG is only donations");
     }
 
     // ---- BasketVault ----
 
-    function _prop_mint(uint256 units, uint256 maxUsdtIn, uint256 spent, uint256 usdtBefore, uint256 unitsBefore, address recipient)
+    function _prop_mint(uint256 units, uint256 maxUsdgIn, uint256 spent, uint256 usdgBefore, uint256 unitsBefore, address recipient)
         internal
     {
-        lte(spent, maxUsdtIn, "B6: spent <= maxUsdtIn");
-        uint256 paid = usdtBefore - usdt.balanceOf(actor);
-        lte(paid, maxUsdtIn, "B6: caller pays at most maxUsdtIn");
+        lte(spent, maxUsdgIn, "B6: spent <= maxUsdgIn");
+        uint256 paid = usdgBefore - usdg.balanceOf(actor);
+        lte(paid, maxUsdgIn, "B6: caller pays at most maxUsdgIn");
         gte(paid, spent, "S5: caller pays spent + fee");
         eq(basket.balanceOf(recipient) - unitsBefore, units, "recipient received the units");
         eq(stateAfter.supply - stateBefore.supply, units, "supply grew by units");
@@ -601,9 +601,9 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
         gte(stateAfter.heldShares[0] - stateBefore.heldShares[0], ShareMath.requiredShares(units, NVDA_PER_UNIT), "B1a: NVDA delivered");
         gte(stateAfter.heldShares[1] - stateBefore.heldShares[1], ShareMath.requiredShares(units, AAPL_PER_UNIT), "B1a: AAPL delivered");
         t(stateAfter.backingOk, "B1: backing holds after mint");
-        // vault USDT is a legitimate holding (migration residue, forfeited in-kind slices, donations), but a
+        // vault USDG is a legitimate holding (migration residue, forfeited in-kind slices, donations), but a
         // mint must not add to it: everything unspent comes back to the payer net of the fee
-        eq(stateAfter.vaultUsdt, stateBefore.vaultUsdt, "B6: a mint leaves no USDT in the vault");
+        eq(stateAfter.vaultUsdg, stateBefore.vaultUsdg, "B6: a mint leaves no USDG in the vault");
     }
 
     function _prop_mintWithoutDelivery(uint256 unitsBefore, uint256 supplyBefore) internal {
@@ -612,13 +612,13 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
         eq(basket.totalSupply(), supplyBefore, "B1a: supply unchanged");
     }
 
-    function _prop_redeem(uint256 units, uint256 minUsdtOut, uint256 usdtOut, uint256 unitsBefore, uint256 usdtBefore, address recipient)
+    function _prop_redeem(uint256 units, uint256 minUsdgOut, uint256 usdgOut, uint256 unitsBefore, uint256 usdgBefore, address recipient)
         internal
     {
-        gte(usdtOut, minUsdtOut, "B: usdtOut >= minUsdtOut");
+        gte(usdgOut, minUsdgOut, "B: usdgOut >= minUsdgOut");
         eq(unitsBefore - basket.balanceOf(actor), units, "redeem burned exactly units");
         eq(stateBefore.supply - stateAfter.supply, units, "supply fell by units");
-        gte(usdt.balanceOf(recipient) - usdtBefore, usdtOut, "recipient received usdtOut");
+        gte(usdg.balanceOf(recipient) - usdgBefore, usdgOut, "recipient received usdgOut");
         _prop_burnKeepsBackingRatio("redeem");
     }
 
@@ -657,7 +657,7 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
         gte(gain, minShareGain, "B3: gain >= minShareGain");
         t(stateAfter.heldShares[0] > stateBefore.heldShares[0], "B3: target constituent strictly increased");
         gte(stateAfter.heldShares[1], stateBefore.heldShares[1], "B3: other constituent did not decrease");
-        gte(stateAfter.vaultUsdt, stateBefore.vaultUsdt, "B3: vault USDT did not decrease");
+        gte(stateAfter.vaultUsdg, stateBefore.vaultUsdg, "B3: vault USDG did not decrease");
         eq(stateAfter.supply, stateBefore.supply, "B3: migrate does not touch supply");
         t(stateAfter.backingOk || !stateBefore.backingOk, "B1: migrate never breaks backing that held before");
         gte(stateAfter.heldShares[0], ShareMath.requiredShares(stateAfter.supply, NVDA_PER_UNIT), "B1: migrated constituent is backed");
@@ -675,8 +675,8 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
         t(m.owner == actor, "mandate owner is the creator");
         t(m.agent == agent, "mandate agent");
         t(m.active, "new mandate active");
-        eq(m.perTxCapUsdt, perTxCap, "perTxCap stored");
-        eq(m.dailyCapUsdt, dailyCap, "dailyCap stored");
+        eq(m.perTxCapUsdg, perTxCap, "perTxCap stored");
+        eq(m.dailyCapUsdg, dailyCap, "dailyCap stored");
         eq(m.expiry, expiry, "expiry stored");
         eq(m.maxSlippageBps, slippageBps, "slippage stored");
         t(perTxCap <= dailyCap, "A2: perTx <= daily");
@@ -686,9 +686,9 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
     function _prop_agentBuy(
         uint256 id,
         bytes32 uid,
-        uint256 usdtIn,
+        uint256 usdgIn,
         uint256 sharesOut,
-        uint256 ownerUsdtBefore,
+        uint256 ownerUsdgBefore,
         uint256 ownerSharesBefore,
         uint256 spentBefore,
         address rep
@@ -696,36 +696,36 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
         AgentMandate.Mandate memory m = mandate.getMandate(id);
         t(m.active && block.timestamp < m.expiry, "A3: only active, unexpired mandates execute");
         t(mandate.allowedUnderlying(id, uid), "A3: underlying allowlisted");
-        uint256 spent = ownerUsdtBefore - usdt.balanceOf(m.owner);
-        lte(spent, usdtIn, "A2: owner debited at most the authorization");
-        lte(spent, m.perTxCapUsdt, "A2: spend <= perTxCap");
-        lte(m.spentInWindow, m.dailyCapUsdt, "A2: window <= dailyCap");
+        uint256 spent = ownerUsdgBefore - usdg.balanceOf(m.owner);
+        lte(spent, usdgIn, "A2: owner debited at most the authorization");
+        lte(spent, m.perTxCapUsdg, "A2: spend <= perTxCap");
+        lte(m.spentInWindow, m.dailyCapUsdg, "A2: window <= dailyCap");
         gte(m.spentInWindow, spent, "A2: window records at least what the owner paid");
         eq(m.spentInWindow - (m.spentInWindow >= spentBefore ? spentBefore : 0), spent, "F-3: window grew by exactly what left the owner");
         gte(sharesOut, mandate.sharesFloor(id, uid, spent), "A5: execution floor vs reference price");
         gte(_sharesHeld(rep, m.owner), ownerSharesBefore, "A1: owner holds the output");
-        eq(usdt.balanceOf(agent), stateBefore.agentUsdt, "A1: agent received no USDT");
+        eq(usdg.balanceOf(agent), stateBefore.agentUsdg, "A1: agent received no USDG");
         eq(IERC20(rep).balanceOf(agent), 0, "A1: agent received no tokens");
-        eq(usdt.balanceOf(address(mandate)), stateBefore.mandateUsdt, "A1/F-3: mandate keeps nothing of the call");
+        eq(usdg.balanceOf(address(mandate)), stateBefore.mandateUsdg, "A1/F-3: mandate keeps nothing of the call");
     }
 
-    function _prop_agentMint(uint256 id, uint256 units, uint256 maxUsdtIn, uint256 spent, uint256 ownerUsdtBefore, uint256 ownerUnitsBefore, uint256 spentBefore)
+    function _prop_agentMint(uint256 id, uint256 units, uint256 maxUsdgIn, uint256 spent, uint256 ownerUsdgBefore, uint256 ownerUnitsBefore, uint256 spentBefore)
         internal
     {
         AgentMandate.Mandate memory m = mandate.getMandate(id);
         t(m.active && block.timestamp < m.expiry, "A3: only active, unexpired mandates execute");
         t(mandate.allowedBasket(id, address(basket)), "A3: basket allowlisted");
-        uint256 paid = ownerUsdtBefore - usdt.balanceOf(m.owner);
+        uint256 paid = ownerUsdgBefore - usdg.balanceOf(m.owner);
         eq(paid, spent, "F-3: reported spend is what left the owner");
-        lte(spent, maxUsdtIn, "A2: spend <= authorization");
-        lte(spent, m.perTxCapUsdt, "A2: spend <= perTxCap");
-        lte(m.spentInWindow, m.dailyCapUsdt, "A2: window <= dailyCap");
+        lte(spent, maxUsdgIn, "A2: spend <= authorization");
+        lte(spent, m.perTxCapUsdg, "A2: spend <= perTxCap");
+        lte(m.spentInWindow, m.dailyCapUsdg, "A2: window <= dailyCap");
         eq(m.spentInWindow - (m.spentInWindow >= spentBefore ? spentBefore : 0), spent, "F-3: window grew by the spend");
         eq(basket.balanceOf(m.owner) - ownerUnitsBefore, units, "A1: owner received the units");
         gte(units, mandate.unitsFloor(id, address(basket), spent), "A5: units floor vs reference value");
         eq(basket.balanceOf(agent), 0, "A1: agent holds no units");
-        eq(usdt.balanceOf(agent), stateBefore.agentUsdt, "A1: agent received no USDT");
-        eq(usdt.balanceOf(address(mandate)), stateBefore.mandateUsdt, "A1/F-3: mandate keeps nothing of the call");
+        eq(usdg.balanceOf(agent), stateBefore.agentUsdg, "A1: agent received no USDG");
+        eq(usdg.balanceOf(address(mandate)), stateBefore.mandateUsdg, "A1/F-3: mandate keeps nothing of the call");
         t(stateAfter.backingOk, "B1: backing holds after agent mint");
     }
 
@@ -750,49 +750,49 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
     // internal functions only assert the postcondition and are called from those handlers.
 
     /// @notice SP-01: a single mint->redeemInKind round trip by the same actor, same units, does not leave them
-    ///         with more value (USDT + representations at the venue's live price) than before it started.
-    ///         redeemInKind intentionally hands back representation tokens instead of USDT (that is the whole
+    ///         with more value (USDG + representations at the venue's live price) than before it started.
+    ///         redeemInKind intentionally hands back representation tokens instead of USDG (that is the whole
     ///         point of "in kind"), so a raw per-asset non-increase check would flag every ordinary round trip;
     ///         value conservation is the guarantee the plan actually intends (docs' surplus-accrual note).
-    /// @dev Round-trip no-profit checks isolate rounding. A vault that already holds a windfall (USDT residue
+    /// @dev Round-trip no-profit checks isolate rounding. A vault that already holds a windfall (USDG residue
     ///      from a migration, a forfeited in-kind slice, a donation, or share slack from a favourable migration)
     ///      hands a pro-rata piece of it to whoever mints next — that is the documented "slack accrues to
     ///      holders" design, not a rounding leak — so the assertion only runs on a vault with no such history.
     function _vaultClean() internal view returns (bool) {
         // other holders' mints over-deliver by design (ceil + quote margins), leaving share slack that also
         // accrues pro rata: only a sole-holder trip isolates rounding
-        return ghosts.vaultWindfalls == 0 && usdt.balanceOf(address(basket)) == 0 && basket.totalSupply() == 0;
+        return ghosts.vaultWindfalls == 0 && usdg.balanceOf(address(basket)) == 0 && basket.totalSupply() == 0;
     }
 
-    function _prop_mintRedeemInKindRoundTrip(uint256 usdtBefore, uint256[] memory repBefore, bool clean) internal {
+    function _prop_mintRedeemInKindRoundTrip(uint256 usdgBefore, uint256[] memory repBefore, bool clean) internal {
         if (!clean) return;
-        uint256 valueBefore = usdtBefore;
-        uint256 valueAfter = usdt.balanceOf(actor);
+        uint256 valueBefore = usdgBefore;
+        uint256 valueAfter = usdg.balanceOf(actor);
         for (uint256 i = 0; i < reps.length; i++) {
-            valueBefore += venue.quote(reps[i], address(usdt), repBefore[i]);
-            valueAfter += venue.quote(reps[i], address(usdt), IERC20(reps[i]).balanceOf(actor));
+            valueBefore += venue.quote(reps[i], address(usdg), repBefore[i]);
+            valueAfter += venue.quote(reps[i], address(usdg), IERC20(reps[i]).balanceOf(actor));
         }
         lte(valueAfter, valueBefore, "SP-01: mint->redeemInKind round trip gained value");
     }
 
-    /// @notice SP-02: at zero protocol and venue fee, a mint->redeem(sell 100% to USDT) round trip never
-    ///         returns more USDT than was spent.
-    function _prop_mintRedeemFullSellZeroFee(uint256 usdtBefore, bool clean) internal {
+    /// @notice SP-02: at zero protocol and venue fee, a mint->redeem(sell 100% to USDG) round trip never
+    ///         returns more USDG than was spent.
+    function _prop_mintRedeemFullSellZeroFee(uint256 usdgBefore, bool clean) internal {
         if (!clean) return;
-        lte(usdt.balanceOf(actor), usdtBefore, "SP-02: zero-fee mint->full-sell round trip gained USDT");
+        lte(usdg.balanceOf(actor), usdgBefore, "SP-02: zero-fee mint->full-sell round trip gained USDG");
     }
 
     /// @notice SP-03: N repeated mint->redeemInKind cycles of the same size do not let the actor's aggregate
-    ///         USDT balance grow (compounding-rounding detector, distinct from the single round trip SP-01).
-    function _prop_mintRedeemInKindNCycles(uint256 usdtBefore, bool clean) internal {
+    ///         USDG balance grow (compounding-rounding detector, distinct from the single round trip SP-01).
+    function _prop_mintRedeemInKindNCycles(uint256 usdgBefore, bool clean) internal {
         if (!clean) return;
-        lte(usdt.balanceOf(actor), usdtBefore, "SP-03: repeated mint->redeemInKind cycles gained USDT");
+        lte(usdg.balanceOf(actor), usdgBefore, "SP-03: repeated mint->redeemInKind cycles gained USDG");
     }
 
     /// @notice SP-04: a buyShares->sellShares round trip on the same representation/actor never returns more
-    ///         USDT than spent, fees included.
-    function _prop_buySellSharesRoundTrip(uint256 usdtBefore) internal {
-        lte(usdt.balanceOf(actor), usdtBefore, "SP-04: buyShares->sellShares round trip gained USDT");
+    ///         USDG than spent, fees included.
+    function _prop_buySellSharesRoundTrip(uint256 usdgBefore) internal {
+        lte(usdg.balanceOf(actor), usdgBefore, "SP-04: buyShares->sellShares round trip gained USDG");
     }
 
     /// @notice SP-05: flipping setRepresentationActive and flipping it back restores the original value.
@@ -804,9 +804,9 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
         );
     }
 
-    /// @notice SP-06: mandate USDT allowance to the venue it just used is exactly zero once the call returns.
+    /// @notice SP-06: mandate USDG allowance to the venue it just used is exactly zero once the call returns.
     function _prop_mandateAllowanceResetAfterAgentCall(address spender) internal {
-        eq(usdt.allowance(address(mandate), spender), 0, "SP-06: mandate allowance not reset to zero after agent call");
+        eq(usdg.allowance(address(mandate), spender), 0, "SP-06: mandate allowance not reset to zero after agent call");
     }
 
     /// @notice SP-07: the owner's revoke succeeds instantly, even when the mandate is at max utilization
@@ -817,9 +817,9 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
     }
 
     /// @notice SP-08: no agentBuyShares/agentMintBasket call succeeds on a mandate id after it was revoked.
-    function _prop_agentCannotSpendAfterRevoke(bool succeeded, uint256 ownerUsdtBefore, address owner) internal {
+    function _prop_agentCannotSpendAfterRevoke(bool succeeded, uint256 ownerUsdgBefore, address owner) internal {
         t(!succeeded, "SP-08: an agent call succeeded on a revoked mandate");
-        eq(usdt.balanceOf(owner), ownerUsdtBefore, "SP-08: owner USDT moved by a rejected post-revoke call");
+        eq(usdg.balanceOf(owner), ownerUsdgBefore, "SP-08: owner USDG moved by a rejected post-revoke call");
     }
 
     // SP-09 (_prop_legSpentZeroImpliesNoReceive) skipped: requires a new MockSwapTarget.Mode.REFUND_THEN_DELIVER,
@@ -851,9 +851,9 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
     }
 
     /// @notice SP-14: only a mandate's designated agent can spend it; an impostor's call must move no owner funds.
-    function _prop_nonAgentCannotSpendMandate(bool succeeded, uint256 ownerUsdtBefore, address owner) internal {
+    function _prop_nonAgentCannotSpendMandate(bool succeeded, uint256 ownerUsdgBefore, address owner) internal {
         t(!succeeded, "SP-14: a non-agent caller executed agentBuyShares");
-        eq(usdt.balanceOf(owner), ownerUsdtBefore, "SP-14: owner USDT moved by an impostor call");
+        eq(usdg.balanceOf(owner), ownerUsdgBefore, "SP-14: owner USDG moved by an impostor call");
     }
 
     /// @notice SP-15: only a mandate's owner can call revoke/setAllowedUnderlying/setAllowedBasket on it.

@@ -21,7 +21,7 @@ contract StockRegistry is AccessControl, IStockRegistry {
     bytes32 public constant KEEPER_ROLE = keccak256("KEEPER_ROLE");
     bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
 
-    address public immutable override usdt;
+    address public immutable override usdg;
 
     uint64 public override maxAttestationAge = 36 hours;
     uint64 public override maxRatioAge = 12 hours;
@@ -86,9 +86,9 @@ contract StockRegistry is AccessControl, IStockRegistry {
     error ZeroAddress();
     error FeeTooHigh(uint16 feeBps, uint16 maxFeeBps);
 
-    constructor(address admin, address usdt_) {
-        if (admin == address(0) || usdt_ == address(0)) revert ZeroAddress();
-        usdt = usdt_;
+    constructor(address admin, address usdg_) {
+        if (admin == address(0) || usdg_ == address(0)) revert ZeroAddress();
+        usdg = usdg_;
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
     }
 
@@ -145,7 +145,7 @@ contract StockRegistry is AccessControl, IStockRegistry {
         emit TargetAllowed(target, allowed);
     }
 
-    /// @notice Set the protocol fee (bps of USDT notional on buys, sells, mints and USDT redemptions) and its
+    /// @notice Set the protocol fee (bps of USDG notional on buys, sells, mints and USDG redemptions) and its
     ///         recipient. In-kind redemption and migrations never carry a fee. A zero recipient disables it.
     function setFee(uint16 feeBps_, address recipient) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (feeBps_ > MAX_FEE_BPS) revert FeeTooHigh(feeBps_, MAX_FEE_BPS);
