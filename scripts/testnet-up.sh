@@ -1,32 +1,41 @@
 #!/usr/bin/env bash
-# Deploy the mock stack (mock USDT, one mock per index-constituent representation, deterministic venue) + Parallax
-# core to BSC testnet (97), configure the registry, create pxDEMO3 and the three indices. Every mock is twinned
-# with its mainnet token (mocks.json `mainnetToken`) for the hybrid demo. Needs DEPLOYER_PRIVATE_KEY funded with
-# tBNB (~0.02 is plenty at 0.1 gwei).
-# Writes contracts/deployments/97.json, which the resolver (CHAIN_ID=97) and keeper read.
+# Deploy Parallax to Robinhood Chain Testnet (46630): the mock stack first (mock USDG, one mock stock token per
+# stock, a deterministic venue), then the core contracts, the registry configuration and both indices.
+#
+# Why mocks: the testnet has no Uniswap deployment and no Chainlink feeds, and only two of the seven stocks exist
+# there as faucet tokens (docs/addresses.md, section 7). Every mock carries the multiplier and the Chainlink token
+# price its mainnet token had when contracts/script/config/mocks.json was generated, and the app labels them.
+#
+# Needs DEPLOYER_PRIVATE_KEY (in .env or the environment) funded with test ETH from
+# https://faucet.testnet.chain.robinhood.com. Writes contracts/deployments/46630.json.
 #   scripts/testnet-up.sh dry    # simulate only
 #   scripts/testnet-up.sh        # broadcast
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export PATH="$HOME/.foundry/bin:$PATH"
 set -a; [ -f "$ROOT/.env" ] && . "$ROOT/.env"; set +a
-RPC="${BSC_TESTNET_RPC_URL:-https://bsc-testnet-rpc.publicnode.com}"
+RPC="${ROBINHOOD_TESTNET_RPC_URL:-https://rpc.testnet.chain.robinhood.com}"
 : "${DEPLOYER_PRIVATE_KEY:?set DEPLOYER_PRIVATE_KEY in .env}"
+CHAIN="$(cast chain-id -r "$RPC")"
+if [ "$CHAIN" != "46630" ]; then echo "refusing: $RPC is chain $CHAIN, not Robinhood Chain Testnet (46630)"; exit 1; fi
 DEPLOYER="$(cast wallet address --private-key "$DEPLOYER_PRIVATE_KEY")"
 BAL="$(cast balance "$DEPLOYER" -r "$RPC")"
-echo "deployer $DEPLOYER · balance $(cast from-wei "$BAL") tBNB · rpc $RPC"
-if [ "$BAL" = "0" ]; then echo "fund $DEPLOYER with tBNB first: https://www.bnbchain.org/en/testnet-faucet"; exit 1; fi
+echo "deployer $DEPLOYER, balance $(cast from-wei "$BAL") test ETH, rpc $RPC"
+if [ "$BAL" = "0" ]; then echo "fund $DEPLOYER with test ETH first: https://faucet.testnet.chain.robinhood.com"; exit 1; fi
 cd "$ROOT/contracts"
-unset USDT_ADDRESS
+mkdir -p deployments
+unset USDG_ADDRESS
 MODE="${1:-send}"
 EXTRA=""
-if [ "$MODE" != "dry" ]; then EXTRA="--broadcast --slow"; fi
+if [ "$MODE" != "dry" ]; then EXTRA="--broadcast --slow"; rm -f deployments/46630.json; fi
 for S in DeployMocks DeployCore ConfigureRegistry CreateBasket; do
   echo "== $S"
   # shellcheck disable=SC2086
-  forge script script/Deploy.s.sol:$S --rpc-url "$RPC" --chain-id 97 $EXTRA -vv | tail -6
+  forge script script/Deploy.s.sol:$S --rpc-url "$RPC" --chain-id 46630 $EXTRA -vv | tail -6
 done
-echo "== indices (pxMAG7, pxAI, pxNEW)"
-cd "$ROOT/scripts" && CHAIN_ID=97 npx tsx create-indices.mts
-echo "done: contracts/deployments/97.json"
-cat "$ROOT/contracts/deployments/97.json"
+if [ "$MODE" != "dry" ]; then
+  echo "done: contracts/deployments/46630.json"
+  cat deployments/46630.json
+  echo
+  echo "explorer: https://explorer.testnet.chain.robinhood.com/address/$(python3 -c "import json;print(json.load(open('deployments/46630.json'))['registry'])")"
+fi

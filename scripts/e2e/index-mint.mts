@@ -1,8 +1,10 @@
 /**
- * M3 done-signal: mint one unit of every curated index against real mainnet state and assert the vault's
- * backing invariant holds afterwards — held shares ≥ units × sharesPerUnit, for every constituent.
+ * Mint one unit of every index through the resolver on a chain you own (the local mocks chain or a fork of
+ * mainnet) and assert the vault's backing invariant holds afterwards: held shares are at least
+ * units × sharesPerUnit for every constituent.
  *
- *   CHAIN_ID=31337 RESOLVER=http://127.0.0.1:4001 pnpm --filter @parallax-hood/scripts e2e:index-mint
+ *   CHAIN_ID=1337  RPC_URL=http://127.0.0.1:8648 RESOLVER=http://127.0.0.1:4100 pnpm --filter @parallax-hood/scripts e2e:index-mint
+ *   CHAIN_ID=31337 RPC_URL=http://127.0.0.1:8647 RESOLVER=http://127.0.0.1:4100 pnpm --filter @parallax-hood/scripts e2e:index-mint
  */
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -11,8 +13,8 @@ import { createPublicClient, createWalletClient, http, parseAbi, type Address, t
 import { privateKeyToAccount } from "viem/accounts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const RPC = process.env.FORK_RPC_URL ?? "http://127.0.0.1:8547";
-const RESOLVER = process.env.RESOLVER ?? "http://127.0.0.1:4001";
+const RPC = process.env.RPC_URL ?? process.env.FORK_RPC_URL ?? "http://127.0.0.1:8647";
+const RESOLVER = process.env.RESOLVER ?? "http://127.0.0.1:4100";
 const CHAIN_ID = process.env.CHAIN_ID ?? "31337";
 const UNITS = process.env.UNITS ?? "1";
 
@@ -38,28 +40,31 @@ for (const symbol of symbols) {
   try {
     const quote = await api(`/baskets/${symbol}/quote-mint`, { method: "POST", body: JSON.stringify({ units: UNITS, wallet: account.address }) });
     if (!quote.tx) {
-      console.log(`${symbol.padEnd(8)} SKIP — no mint transaction: ${quote.problems?.join("; ") || "unknown"}`);
+      console.log(`${symbol.padEnd(8)} SKIP, no mint transaction: ${quote.problems?.join("; ") || "unknown"}`);
       failures++;
       continue;
     }
-    const cost = Number(quote.expectedUsdt) / 1e18;
+    const cost = Number(quote.expectedUsdg) / 1e6; // USDG has 6 decimals
     const fills = quote.breakdown.flatMap((b: any) => b.fills.map((f: any) => `${b.ticker}:${f.symbol}`));
     await pub.waitForTransactionReceipt({
-      hash: await wallet.writeContract({ address: quote.usdt as Address, abi: erc20, functionName: "approve", args: [quote.basket as Address, BigInt(quote.maxUsdtIn)], chain: null }),
+      hash: await wallet.writeContract({ address: quote.usdg as Address, abi: erc20, functionName: "approve", args: [quote.basket as Address, BigInt(quote.maxUsdgIn)], chain: null }),
     });
     const hash = await wallet.sendTransaction({ to: quote.tx.to as Address, data: quote.tx.data as Hex, gas: quote.tx.gas ? (BigInt(quote.tx.gas) * 13n) / 10n : undefined, chain: null });
     const rcpt = await pub.waitForTransactionReceipt({ hash });
     if (rcpt.status !== "success") throw new Error(`mint reverted (${hash})`);
 
     const units = await pub.readContract({ address: quote.basket as Address, abi: erc20, functionName: "balanceOf", args: [account.address] });
+    // the resolver memoizes a vault's composition for a second and a half; read after that, or the check
+    // would be made against the vault as it was before this mint
+    await new Promise((r) => setTimeout(r, 2_000));
     const after = await api(`/baskets/${symbol}`);
     const worst = after.constituents.reduce((m: number, c: any) => Math.min(m, c.backingRatio ?? 99), 99);
-    const ok = after.backingOk && worst >= 1 && units > 0n;
-    console.log(`${symbol.padEnd(8)} ${ok ? "PASS" : "FAIL"} · paid ${cost.toFixed(2)} USDT · units ${Number(units) / 1e18} · backing ${after.backingOk ? "ok" : "BROKEN"} (worst ${worst}) · gas ${rcpt.gasUsed}`);
+    const ok = after.backingOk && worst >= 1 && worst < 99 && units > 0n; // 99: no constituent reported a ratio
+    console.log(`${symbol.padEnd(8)} ${ok ? "PASS" : "FAIL"} · paid ${cost.toFixed(2)} USDG · units ${Number(units) / 1e18} · backing ${after.backingOk ? "ok" : "BROKEN"} (worst ${worst}) · gas ${rcpt.gasUsed}`);
     console.log(`         fills: ${fills.join(", ")}`);
     if (!ok) failures++;
   } catch (e) {
-    console.log(`${symbol.padEnd(8)} FAIL — ${String(e).slice(0, 200)}`);
+    console.log(`${symbol.padEnd(8)} FAIL: ${String(e).slice(0, 200)}`);
     failures++;
   }
 }

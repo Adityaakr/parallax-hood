@@ -10,12 +10,13 @@
     "dev": "pnpm -r --parallel --filter './apps/*' dev",
     "contracts:test": "cd contracts && forge test",
     "contracts:build": "cd contracts && forge build",
-    "fork": "anvil --fork-url ${BSC_FORK_RPC_URL:-https://bsc-mainnet.public.blastapi.io} --chain-id 31337 --port 8547",
-    "fork:up": "./scripts/fork-up.sh",
+    "contracts:fork-test": "cd contracts && forge test --match-path 'test/fork/*' --no-match-path none",
+    "universe": "pnpm --filter @parallax-hood/scripts gen-universe",
     "mocks:up": "./scripts/mocks-up.sh",
+    "fork:up": "./scripts/fork-up.sh",
     "testnet:up": "./scripts/testnet-up.sh",
-    "mainnet:up": "./scripts/mainnet-up.sh",
-    "docker:build": "docker build -t parallax ."
+    "monitor": "pnpm --filter @parallax-hood/monitor once",
+    "docker:build": "docker build -t parallax-hood ."
   },
   "devDependencies": {
     "typescript": "^5.6.0",
