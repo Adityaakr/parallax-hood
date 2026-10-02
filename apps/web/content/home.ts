@@ -11,7 +11,7 @@ export const HOME = {
   header: {
     tag: "Parallax on Robinhood Chain",
     title: "One stock. Many tokens. One true position, in shares.",
-    text: "A token is not a share. A Robinhood stock token carries an on-chain multiplier that grows with reinvested dividends and changes on splits, so the number of tokens you hold is not the number of shares you own. Parallax measures everything in underlying shares: USDG index vaults, agent mandates and execution. It runs on testnet today; mainnet deployment is pending.",
+    text: "A token is not a share. A Robinhood stock token carries an on-chain multiplier that grows with reinvested dividends and changes on splits, so the number of tokens you hold is not the number of shares you own. Parallax measures everything in underlying shares: USDG index vaults, agent mandates and execution. Tested against a fork of Robinhood Chain mainnet; public deployment is pending.",
     primary: { label: "View the indices", href: "/baskets" },
     secondary: { label: "Search a stock", href: "/stocks" },
     /* the UI-Card's typewriter: someone asking an agent to quote, decide and execute through Parallax */
