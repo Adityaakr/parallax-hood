@@ -1,12 +1,13 @@
 import { type Address, type Hex, encodeFunctionData, isAddress, getAddress } from "viem";
 import {
   ShareRouterAbi, WAD, USDG_UNIT, parseWad, formatWad, parseUsdg, formatUsdg, usdgToWad, serializeLegs, tickerToId, sharesForTokens, PolicySchema, type Policy, type ResolveResult,
-  ROBINHOOD_ADDRESSES, feeOn } from "@parallax-hood/sdk";
+  feeOn } from "@parallax-hood/sdk";
 import type { Chain, UnderlyingInfo } from "./chain.js";
 import { Venues } from "./providers/venues.js";
 import { PoolOracle } from "./providers/poolOracle.js";
 import { MarketHistory } from "./providers/marketHistory.js";
 import { computedMarketStatus, type MarketStatus } from "./providers/marketHours.js";
+import { RobinhoodApi, type IssuerAsset, type IssuerQuote } from "./providers/robinhood.js";
 import { scoreBuy, scoreSell, attestationRequired, type ScoredCandidate } from "./scoring.js";
 import { Simulator } from "./simulate.js";
 import { quoteHashOf } from "./quotes.js";
@@ -17,6 +18,20 @@ const log = logger("resolve");
 
 export type ReferencePrice = { price: bigint; source: string; updatedAt: number | null; alt?: { source: string; price: bigint } };
 
+/** What the issuer itself says about a stock right now, read from Robinhood's API. */
+export type IssuerView = {
+  source: string;
+  /** the mainnet token the issuer lists for this symbol; it matched the one this network trades or stands in for */
+  token: Address;
+  status: IssuerAsset["status"];
+  isin: string | null;
+  multiplier: string;
+  pendingMultiplier: IssuerAsset["pendingMultiplier"];
+  sessions: IssuerAsset["sessions"];
+  /** null when the quote route did not answer; the asset fields above still stand */
+  quote: (Omit<IssuerQuote, "symbol" | "token"> & { mid: string }) | null;
+};
+
 export class Resolver {
   readonly venues: Venues;
   /** Pool-oracle history for the representations Chainlink has no feed for. */
@@ -24,11 +39,14 @@ export class Resolver {
   /** Daily closes of the underlying stock, for the periods no onchain source reaches. */
   readonly marketHistory: MarketHistory;
   readonly sim: Simulator;
+  /** Robinhood's own API: quotes, sessions and corporate actions for the real tokens. Off on a pure mock network. */
+  readonly issuer: RobinhoodApi;
   constructor(readonly chain: Chain, readonly db: Db) {
     this.venues = new Venues(chain);
     this.poolOracle = new PoolOracle(chain);
     this.marketHistory = new MarketHistory(chain.cfg.MARKET_HISTORY && !chain.isMocks, db, chain.cfg.MARKET_HISTORY_URL);
     this.sim = new Simulator(chain);
+    this.issuer = new RobinhoodApi(chain.cfg.issuerApi);
   }
 
   /** "live" when prices and ratios are read from Robinhood Chain; "fixture" when a mock venue stands in for them. */
@@ -69,7 +87,7 @@ export class Resolver {
       const perToken = (cl.price * WAD) / 10n ** BigInt(cl.decimals);
       // the feed belongs to the mainnet token: on a hybrid network that is the mock's twin, with its own multiplier
       const ratio = hybrid ? await this.chain.mainnetMultiplier(this.chain.twin(rep.token)) : rep.ratio;
-      if (ratio && ratio > 0n) return { price: (perToken * WAD) / ratio, source: `chainlink:${u.ticker}/USD`, updatedAt: cl.updatedAt };
+      if (ratio && ratio > 0n) return { price: (perToken * WAD) / ratio, source: hybrid ? `chainlink:${u.ticker}/USD on Robinhood Chain mainnet` : `chainlink:${u.ticker}/USD`, updatedAt: cl.updatedAt };
     }
     if (this.chain.isMocks && rep) {
       // mock venue: share price = token price / ratio of the first representation
@@ -79,20 +97,49 @@ export class Resolver {
     return null;
   }
 
+  /**
+   * The issuer's asset record and live quote for an underlying. The issuer is keyed by symbol, so the answer is
+   * only used when the token it lists on chain 4663 is the one this network trades (or, on a hybrid network,
+   * the one its mock stands in for): a symbol that pointed at some other contract is dropped, not shown.
+   */
+  async issuerView(u: UnderlyingInfo): Promise<IssuerView | null> {
+    if (!this.issuer.enabled) return null;
+    const [asset, quote] = await Promise.all([this.issuer.asset(u.ticker), this.issuer.quote(u.ticker)]);
+    if (!asset?.token) return null;
+    const ours = u.representations.map((r) => this.chain.twin(r.token).toLowerCase());
+    if (!ours.includes(asset.token.toLowerCase())) {
+      log.warn("issuer lists a different token for this symbol; ignoring its record", { ticker: u.ticker, issuer: asset.token });
+      return null;
+    }
+    let q: IssuerView["quote"] = null;
+    if (quote && (!quote.token || quote.token.toLowerCase() === asset.token.toLowerCase())) {
+      const { symbol: _s, token: _t, ...rest } = quote;
+      q = { ...rest, mid: formatWad((parseWad(quote.bid) + parseWad(quote.ask)) / 2n, 4) };
+    }
+    return { source: "api.robinhood.com/rhj", token: asset.token, status: asset.status, isin: asset.isin, multiplier: asset.multiplier, pendingMultiplier: asset.pendingMultiplier, sessions: asset.sessions, quote: q };
+  }
+
+  /**
+   * Whether the reference is moving. The schedule is Chainlink's 24/5 one, computed; a trading halt reported by
+   * the issuer overrides it, because a halted stock has no live price whatever the clock says.
+   */
   async marketStatus(u: UnderlyingInfo): Promise<MarketStatus> {
     if (this.chain.isMocks && !this.chain.isHybrid) return { open: u.marketState.open, nextOpenTime: null, nextCloseTime: null, source: "registry" };
+    const quote = await this.issuer.quote(u.ticker).catch(() => null);
+    if (quote?.halted) return { open: false, nextOpenTime: null, nextCloseTime: null, source: "issuer", reason: "HALTED" };
     return computedMarketStatus();
   }
 
   private ethUsd: { at: number; price: bigint } | null = null;
 
-  /** USD per ETH, 1e18-scaled, from the deepest WETH/USDG pool. Cached for a minute; null when no pool answers. */
+  /**
+   * USD per ETH, 1e18-scaled, from the deepest WETH/USDG pool: this network's, or mainnet's when execution here
+   * is mocked. Cached for a minute; null when no pool answers.
+   */
   private async ethUsdPrice(): Promise<bigint | null> {
     if (this.ethUsd && Date.now() - this.ethUsd.at < 60_000) return this.ethUsd.price;
-    const probe = 10n ** 16n; // 0.01 WETH
-    const q = await this.venues.uniswap?.bestExactInput(ROBINHOOD_ADDRESSES.weth, this.chain.d.usdg, probe).catch(() => null);
-    if (!q) return null;
-    const price = (usdgToWad(q.amountOut) * WAD) / probe;
+    const price = await this.venues.ethUsd();
+    if (!price) return null;
     this.ethUsd = { at: Date.now(), price };
     return price;
   }
@@ -104,8 +151,9 @@ export class Resolver {
       // A local anvil adds a suggested tip to eth_gasPrice that the real chain would never charge.
       const gasPrice = (await this.chain.client.getBlock()).baseFeePerGas ?? (await this.chain.client.getGasPrice());
       const units = 150_000n + 120_000n * BigInt(legs);
-      // a mock chain has no ETH market; $3,000 is a round placeholder that only ever prices mock gas
-      const ethUsd = this.chain.isMocks ? 3_000n * WAD : await this.ethUsdPrice();
+      // A mock chain on its own snapshot has no ETH market: $3,000 is a round placeholder that only ever prices
+      // mock gas there. A hybrid one prices this network's gas at mainnet's live ETH price.
+      const ethUsd = this.chain.isMocks && !this.chain.isHybrid ? 3_000n * WAD : await this.ethUsdPrice();
       return ethUsd ? (gasPrice * units * ethUsd) / WAD : 0n;
     } catch {
       return 0n;
@@ -291,7 +339,7 @@ export class Resolver {
     const list = q ? all.filter((u) => u.ticker.includes(q) || u.representations.some((r) => r.symbol.toUpperCase().includes(q))) : all;
     const out = [];
     for (const u of list) {
-      const [ref, market] = await Promise.all([this.referencePrice(u), this.marketStatus(u)]);
+      const [ref, market, issuer] = await Promise.all([this.referencePrice(u), this.marketStatus(u), this.issuerView(u).catch(() => null)]);
       const reps = await Promise.all(u.representations.map(async (r) => {
         const depth = await this.venues.depth(r.token).catch(() => ({ usdg: 0n, tiers: [] as number[], bestFee: null }));
         return {
@@ -306,7 +354,7 @@ export class Resolver {
       out.push({
         ticker: u.ticker, id: u.id, active: u.active, name: brand?.name ?? null, logoUrl: brand?.logoUrl ?? null,
         referencePrice: ref ? formatWad(ref.price, 4) : null, referenceSource: ref?.source ?? "unavailable", referenceUpdatedAt: ref?.updatedAt ?? null,
-        market, representations: reps,
+        market, issuer, representations: reps,
       });
     }
     return { dataSource: this.dataSource, stocks: out };

@@ -11,22 +11,38 @@ import { Baskets } from "./baskets.js";
 import { PriceHistory } from "./history.js";
 import { Indexer } from "./indexer.js";
 import { faucet } from "./faucet.js";
+import { Mirror } from "./mirror.js";
 import { logger } from "./log.js";
 
 const log = logger("http");
 
 /** What a hybrid network is doing, spelled out for every client: prices from mainnet, execution here on mocks. */
-export function hybridLabel(cfg: Config) {
-  return cfg.hybrid ? { markets: "Robinhood Chain mainnet (Chainlink feeds, Uniswap v3 pool depth)", execution: `${cfg.chain.name} (mock stock tokens, mock USDG and a mock venue priced from mainnet at deploy time)` } : null;
+export function hybridLabel(cfg: Config, mirrored = false) {
+  if (!cfg.hybrid) return null;
+  return {
+    markets: "Robinhood Chain mainnet (Chainlink feeds, Uniswap v3 pools) and Robinhood's Stock Token API",
+    execution: `${cfg.chain.name} (test stock tokens, test USDG and a test venue ${mirrored ? "kept on mainnet's pool prices by the mirror" : "priced from mainnet at deploy time"})`,
+  };
 }
 
-/** Which network this is and what on it is a stand-in. Sent with every listing so no screen has to guess. */
-export function networkLabel(cfg: Config, chain: Chain) {
+/**
+ * Which network this is, what on it is a stand-in and what is read live from the real market. Sent with every
+ * listing so no screen has to guess. `live` is empty on a mock network priced from its own snapshot.
+ */
+export function networkLabel(cfg: Config, chain: Chain, mirrored = false) {
   const mocked = chain.isMocks ? ["stock tokens", "USDG", "swap venue", ...(cfg.hybrid ? [] : ["reference prices"])] : [];
-  return { ...NETWORK_LABEL[cfg.network], chainId: cfg.CHAIN_ID, explorer: cfg.chain.blockExplorers?.default.url ?? null, mocked };
+  const real = !chain.isMocks || cfg.hybrid;
+  const live = real
+    ? [
+        "reference prices (Chainlink)", "pool depth (Uniswap v3)", "multipliers (ERC-8056)",
+        ...(cfg.issuerApi ? ["issuer quotes, sessions and corporate actions (Robinhood API)"] : []),
+        ...(chain.isMocks && mirrored ? ["venue prices (mirrored from mainnet pools)"] : []),
+      ]
+    : [];
+  return { ...NETWORK_LABEL[cfg.network], chainId: cfg.CHAIN_ID, explorer: cfg.chain.blockExplorers?.default.url ?? null, mocked, live, liveFrom: chain.isMocks && cfg.hybrid ? "Robinhood Chain mainnet" : null };
 }
 
-export type Services = { cfg: Config; chain: Chain; db: Db; resolver: Resolver; baskets: Baskets; indexer: Indexer; history: PriceHistory };
+export type Services = { cfg: Config; chain: Chain; db: Db; resolver: Resolver; baskets: Baskets; indexer: Indexer; history: PriceHistory; mirror: Mirror };
 
 export function createServices(cfg: Config, dbPath = cfg.dbPath): Services {
   const chain = new Chain(cfg);
@@ -38,7 +54,8 @@ export function createServices(cfg: Config, dbPath = cfg.dbPath): Services {
   const history = new PriceHistory(chain.mainnet, cfg.network !== "mocks" || cfg.hybrid, (t) => chain.catalogue.feed(t), db);
   const baskets = new Baskets(chain, resolver, history);
   const indexer = new Indexer(chain, db, cfg.INDEXER_FROM_BLOCK, cfg.INDEXER_POLL_MS);
-  return { cfg, chain, db, resolver, baskets, indexer, history };
+  const mirror = new Mirror(chain, resolver.venues);
+  return { cfg, chain, db, resolver, baskets, indexer, history, mirror };
 }
 
 const ResolveBody = z.object({
@@ -65,14 +82,32 @@ export function createApp(s: Services) {
   });
 
   const hasFaucet = s.cfg.network === "fork" || s.cfg.network === "mocks" || (s.cfg.network === "robinhoodTestnet" && Boolean(s.cfg.FAUCET_PRIVATE_KEY));
-  app.get("/", (c) => c.json({ name: "parallax-resolver", chainId: s.cfg.CHAIN_ID, network: s.cfg.network, label: networkLabel(s.cfg, s.chain), dataSource: s.resolver.dataSource }));
+  const label = () => networkLabel(s.cfg, s.chain, s.mirror.enabled);
+  const hybrid = () => hybridLabel(s.cfg, s.mirror.enabled);
+  /** The mirror in one line for a banner: on or off, who signs, when it last had every stock on mainnet's numbers. */
+  const mirrorBrief = () => {
+    const m = s.mirror.snapshot();
+    return m.enabled ? { operator: m.operator, intervalS: m.intervalS, thresholdBps: m.thresholdBps, lastRunAt: m.lastRunAt, lastInSyncAt: m.lastInSyncAt, lastWriteAt: m.lastWriteAt, writes: m.writes, error: m.error } : null;
+  };
+  app.get("/", (c) => c.json({ name: "parallax-resolver", chainId: s.cfg.CHAIN_ID, network: s.cfg.network, label: label(), dataSource: s.resolver.dataSource }));
   app.get("/health", async (c) => {
     const block = await s.chain.client.getBlockNumber().catch(() => null);
-    return c.json({ ok: block !== null, block: block?.toString() ?? null, chainId: s.cfg.CHAIN_ID, label: networkLabel(s.cfg, s.chain), quoteOnly: s.cfg.quoteOnly, hybrid: hybridLabel(s.cfg), faucet: hasFaucet, universe: { file: s.chain.catalogue.available, stocks: s.chain.catalogue.universe.representations.length }, deployment: json(s.chain.d) });
+    return c.json({ ok: block !== null, block: block?.toString() ?? null, chainId: s.cfg.CHAIN_ID, label: label(), quoteOnly: s.cfg.quoteOnly, hybrid: hybrid(), mirror: mirrorBrief(), issuerApi: s.cfg.issuerApi, faucet: hasFaucet, universe: { file: s.chain.catalogue.available, stocks: s.chain.catalogue.universe.representations.length }, deployment: json(s.chain.d) });
   });
-  app.get("/config", (c) => c.json({ chainId: s.cfg.CHAIN_ID, network: s.cfg.network, label: networkLabel(s.cfg, s.chain), deployment: json(s.chain.d), dataSource: s.resolver.dataSource }));
+  app.get("/config", (c) => c.json({ chainId: s.cfg.CHAIN_ID, network: s.cfg.network, label: label(), deployment: json(s.chain.d), dataSource: s.resolver.dataSource }));
+  /** Every stock's mainnet value beside the one this network holds, and the transactions the last run sent. */
+  app.get("/mirror", (c) => c.json(json(s.mirror.snapshot())));
 
-  app.get("/stocks", async (c) => c.json(json({ ...(await s.resolver.stocks(c.req.query("query"))), hybrid: hybridLabel(s.cfg) })));
+  app.get("/stocks", async (c) => c.json(json({ ...(await s.resolver.stocks(c.req.query("query"))), hybrid: hybrid() })));
+  /**
+   * Corporate actions as the issuer reports them: dividends and splits, processed or scheduled, newest first.
+   * `actions` is null when the issuer's API is off or not answering, which is different from an empty list.
+   */
+  app.get("/stocks/:ticker/corporate-actions", async (c) => {
+    const ticker = c.req.param("ticker").toUpperCase();
+    const actions = await s.resolver.issuer.corporateActions(ticker);
+    return c.json({ ticker, source: s.resolver.issuer.enabled ? "api.robinhood.com/rhj/corporate-actions" : null, actions });
+  });
   app.get("/stocks/:ticker", async (c) => {
     const all = await s.resolver.stocks(c.req.param("ticker"));
     const hit = all.stocks.find((x) => x.ticker === c.req.param("ticker").toUpperCase());
@@ -91,7 +126,7 @@ export function createApp(s: Services) {
 
   app.get("/baskets", async (c) => {
     const snap = await s.baskets.cardsCached();
-    return c.json(json({ dataSource: s.resolver.dataSource, quoteOnly: s.cfg.quoteOnly, hybrid: hybridLabel(s.cfg), asOf: Math.floor(snap.at / 1000), baskets: snap.cards }));
+    return c.json(json({ dataSource: s.resolver.dataSource, quoteOnly: s.cfg.quoteOnly, hybrid: hybrid(), asOf: Math.floor(snap.at / 1000), baskets: snap.cards }));
   });
   /**
    * A price history for one stock. Chainlink rounds where the stock has a feed, the underlying's daily closes

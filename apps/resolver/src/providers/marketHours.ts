@@ -24,7 +24,7 @@ function weekMinutes(d: Date) {
   return DAYS.indexOf(weekday) * 1440 + minutes;
 }
 
-export type MarketStatus = { open: boolean; nextOpenTime: number | null; nextCloseTime: number | null; source: "computed" | "registry"; reason?: string };
+export type MarketStatus = { open: boolean; nextOpenTime: number | null; nextCloseTime: number | null; source: "computed" | "registry" | "issuer"; reason?: string };
 
 export function computedMarketStatus(now = new Date()): MarketStatus {
   const at = weekMinutes(now);

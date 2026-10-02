@@ -15,6 +15,7 @@
     "mocks:up": "./scripts/mocks-up.sh",
     "fork:up": "./scripts/fork-up.sh",
     "testnet:up": "./scripts/testnet-up.sh",
+    "testnet:dev": "./scripts/testnet-dev.sh",
     "monitor": "pnpm --filter @parallax-hood/monitor once",
     "docker:build": "docker build -t parallax-hood ."
   },

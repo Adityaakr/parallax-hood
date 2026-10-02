@@ -5,14 +5,17 @@ import type { Db } from "./db.js";
 
 const TransferAbi = [{ type: "function", name: "transfer", stateMutability: "nonpayable", inputs: [{ name: "to", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }] }] as const;
 import type { Chain } from "./chain.js";
+import { serial } from "./txLock.js";
 
 const USDG_GRANT = 2_000n * USDG_UNIT;
 const ETH_GRANT = parseEther("1");
 
 /** Testnet: mock USDG minted by the faucet key, plus a little test ETH for gas when the wallet is dry. */
 const TESTNET_USDG_GRANT = 10_000n * USDG_UNIT;
-const TESTNET_ETH_TOPUP = parseEther("0.0005");
-const TESTNET_ETH_FLOOR = parseEther("0.0002");
+/* Gas on the testnet is about 0.01 gwei: a seven-stock index deposit costs roughly 0.00001 test ETH, so this
+   top-up covers a few dozen transactions without draining the key the mirror also signs with. */
+const TESTNET_ETH_TOPUP = parseEther("0.0001");
+const TESTNET_ETH_FLOOR = parseEther("0.00003");
 
 /**
  * Test-funds faucet, only on chains we own. Local fork / mocks use anvil cheatcodes: ETH via anvil_setBalance;
@@ -57,13 +60,17 @@ async function testnetFaucet(chain: Chain, to: Address, db?: Db): Promise<{ addr
   if (now - last < chain.cfg.FAUCET_COOLDOWN_S) throw new Error(`already funded ${Math.round((now - last) / 60)} min ago; try again in ${Math.ceil((chain.cfg.FAUCET_COOLDOWN_S - (now - last)) / 60)} min`);
   const account = privateKeyToAccount(pk as Hex);
   const wallet = createWalletClient({ account, chain: chain.cfg.chain, transport: http(chain.cfg.rpcUrl) });
-  // gas first, so a brand-new wallet can actually approve and mint afterwards
-  if ((await chain.client.getBalance({ address: to })) < TESTNET_ETH_FLOOR) {
-    const h = await wallet.sendTransaction({ to, value: TESTNET_ETH_TOPUP });
-    await chain.client.waitForTransactionReceipt({ hash: h });
-  }
-  const txHash = await wallet.writeContract({ address: chain.d.usdg, abi: MockUSDGAbi, functionName: "mint", args: [to, TESTNET_USDG_GRANT] });
-  await chain.client.waitForTransactionReceipt({ hash: txHash });
+  // one send at a time for this key: the mirror may be signing with it too
+  const txHash = await serial(account.address, async () => {
+    // gas first, so a brand-new wallet can actually approve and mint afterwards
+    if ((await chain.client.getBalance({ address: to })) < TESTNET_ETH_FLOOR) {
+      const h = await wallet.sendTransaction({ to, value: TESTNET_ETH_TOPUP });
+      await chain.client.waitForTransactionReceipt({ hash: h });
+    }
+    const hash = await wallet.writeContract({ address: chain.d.usdg, abi: MockUSDGAbi, functionName: "mint", args: [to, TESTNET_USDG_GRANT] });
+    await chain.client.waitForTransactionReceipt({ hash });
+    return hash;
+  });
   db?.setKv(key, String(now));
   const [usdg, eth] = await Promise.all([chain.client.readContract({ address: chain.d.usdg, abi: Erc20Abi, functionName: "balanceOf", args: [to] }), chain.client.getBalance({ address: to })]);
   return { address: to, eth: eth.toString(), usdg: usdg.toString(), txHash };

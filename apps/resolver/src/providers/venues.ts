@@ -1,6 +1,6 @@
 import { createPublicClient, http, type Address, type PublicClient } from "viem";
 import {
-  ROBINHOOD_ADDRESSES, USDG_UNIT, CHAINS, mockVenueLeg, uniswapExactInputSingleLeg, uniswapExactOutputSingleLeg, uniswapExactInputLeg, uniswapExactOutputLeg, type Leg,
+  ROBINHOOD_ADDRESSES, USDG_UNIT, WAD, usdgToWad, CHAINS, mockVenueLeg, uniswapExactInputSingleLeg, uniswapExactOutputSingleLeg, uniswapExactInputLeg, uniswapExactOutputLeg, type Leg,
 } from "@parallax-hood/sdk";
 import { UniswapV3Client, UNISWAP_V3_DEPLOYMENTS, ROBINHOOD_UNISWAP_V3, type Quote, type Route } from "@parallax-hood/uniswap-client";
 import type { Chain } from "../chain.js";
@@ -63,6 +63,39 @@ export class Venues {
     if (!client || (this.chain.isMocks && !this.mainnetUniswap)) return { usdg: 0n, tiers: [], bestFee: null };
     const d = await client.depth(usdg, target);
     return { usdg: d.balance, tiers: d.fees, bestFee: d.deepestFee };
+  }
+
+  /** The real market: this network's own pools, or mainnet's when execution here is mocked. */
+  private get market(): { client: UniswapV3Client; usdg: Address } | null {
+    if (this.mainnetUniswap) return { client: this.mainnetUniswap, usdg: ROBINHOOD_ADDRESSES.usdg as Address };
+    return this.uniswap ? { client: this.uniswap, usdg: this.chain.d.usdg } : null;
+  }
+
+  /** USD per ETH, 1e18-scaled, from what 0.01 WETH sells for in the real market. Null when no pool answers. */
+  async ethUsd(): Promise<bigint | null> {
+    const m = this.market;
+    if (!m) return null;
+    const probe = 10n ** 16n;
+    const q = await m.client.bestExactInput(ROBINHOOD_ADDRESSES.weth, m.usdg, probe, this.via).catch(() => null);
+    return q ? (usdgToWad(q.amountOut) * WAD) / probe : null;
+  }
+
+  /**
+   * What a token costs in the real market right now, in USD per token (1e18-scaled): the price a small buy
+   * pays, the price selling the same tokens back gets, and their midpoint. Both sides include the pool fee, so
+   * the midpoint is the pool's own price. `token` is the mainnet token on a hybrid network.
+   */
+  async marketPrice(token: Address, probeUsdg = 100n * USDG_UNIT): Promise<{ buy: bigint; sell: bigint; mid: bigint; venue: string } | null> {
+    const m = this.market;
+    if (!m) return null;
+    const target = this.chain.twin(token);
+    const bought = await m.client.bestExactInput(m.usdg, target, probeUsdg, this.via);
+    if (!bought || bought.amountOut === 0n) return null;
+    const sold = await m.client.bestExactInput(target, m.usdg, bought.amountOut, this.via);
+    if (!sold || sold.amountOut === 0n) return null;
+    const buy = (usdgToWad(probeUsdg) * WAD) / bought.amountOut;
+    const sell = (usdgToWad(sold.amountOut) * WAD) / bought.amountOut;
+    return { buy, sell, mid: (buy + sell) / 2n, venue: bought.venue };
   }
 
   /** Warm the fork's state cache by quoting every token once (no-op cost on a real RPC). */

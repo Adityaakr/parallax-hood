@@ -24,6 +24,9 @@ if (!cfg.quoteOnly || cfg.CHAIN_ID === 4663) {
   setInterval(warm, 60_000).unref();
 }
 
+// keep a mock deployment on mainnet's prices and multipliers (off unless HYBRID_MARKETS and MIRROR_PRIVATE_KEY are set)
+services.mirror.start();
+
 const app = createApp(services);
 serve({ fetch: app.fetch, port: cfg.PORT }, (info) => {
   log.info("resolver listening", { port: info.port, chainId: cfg.CHAIN_ID, network: cfg.network, rpc: cfg.rpcUrl, universe: services.chain.catalogue.universe.representations.length });
