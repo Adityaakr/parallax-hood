@@ -18,40 +18,6 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@22.20.3)(lightningcss@1.32.0)(supports-color@7.2.0)
 
-  apps/keeper:
-    dependencies:
-      '@hono/node-server':
-        specifier: ^1.13.0
-        version: 1.19.17(hono@4.13.8)
-      '@parallax-hood/binance-client':
-        specifier: workspace:*
-        version: link:../../packages/binance-client
-      '@parallax-hood/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
-      hono:
-        specifier: ^4.6.0
-        version: 4.13.8
-      viem:
-        specifier: ^2.21.0
-        version: 2.56.5(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76)
-      zod:
-        specifier: ^3.23.8
-        version: 3.25.76
-    devDependencies:
-      '@types/node':
-        specifier: ^22.7.0
-        version: 22.20.3
-      tsx:
-        specifier: ^4.19.0
-        version: 4.23.13
-      typescript:
-        specifier: ^5.6.0
-        version: 5.9.3
-      vitest:
-        specifier: ^2.1.0
-        version: 2.1.9(@types/node@22.20.3)(lightningcss@1.32.0)(supports-color@7.2.0)
-
   apps/mcp:
     dependencies:
       '@modelcontextprotocol/sdk':
@@ -73,6 +39,34 @@ importers:
       '@parallax-hood/resolver':
         specifier: workspace:*
         version: link:../resolver
+      '@types/node':
+        specifier: ^22.7.0
+        version: 22.20.3
+      tsx:
+        specifier: ^4.19.0
+        version: 4.23.13
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@22.20.3)(lightningcss@1.32.0)(supports-color@7.2.0)
+
+  apps/monitor:
+    dependencies:
+      '@parallax-hood/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@parallax-hood/uniswap-client':
+        specifier: workspace:*
+        version: link:../../packages/uniswap-client
+      viem:
+        specifier: ^2.21.0
+        version: 2.56.5(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76)
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
       '@types/node':
         specifier: ^22.7.0
         version: 22.20.3
@@ -180,25 +174,6 @@ importers:
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
-
-  packages/binance-client:
-    dependencies:
-      zod:
-        specifier: ^3.23.8
-        version: 3.25.76
-    devDependencies:
-      '@types/node':
-        specifier: ^22.7.0
-        version: 22.20.3
-      tsx:
-        specifier: ^4.19.0
-        version: 4.23.13
-      typescript:
-        specifier: ^5.6.0
-        version: 5.9.3
-      vitest:
-        specifier: ^2.1.0
-        version: 2.1.9(@types/node@22.20.3)(lightningcss@1.32.0)(supports-color@7.2.0)
 
   packages/sdk:
     dependencies:

@@ -1,1 +1,1 @@
-export default ["packages/*", "apps/resolver", "apps/keeper", "apps/mcp"];
+export default ["packages/*", "apps/resolver", "apps/monitor", "apps/mcp"];
