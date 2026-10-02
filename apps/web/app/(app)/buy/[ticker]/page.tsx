@@ -2,7 +2,7 @@
 import { use, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
-import { useApi, useApiPost, type ResolveResponse, type Stock, type StocksResponse, type Health, type WalletView, type SellResponse, type CorporateActions } from "@/lib/api";
+import { useApi, useApiPost, quoteIsCurrent, type ResolveResponse, type Stock, type StocksResponse, type Health, type WalletView, type SellResponse, type CorporateActions } from "@/lib/api";
 import { useDepth } from "@/lib/depth";
 import { fmt, fmtUsdg, usd, bps, dt, ago, compactUsd, usdgNumber, venueName, platformName } from "@/lib/format";
 import { Loading, ErrorState, Banner, PlatformTag, Tag, A } from "@/components/ui";
@@ -45,11 +45,17 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
   const depth = useDepth(T, policy, Boolean(resolve.data));
   const r = resolve.data;
 
+  /* what the quote on screen has to have been asked with before its transaction may be signed */
+  const buyInputs = { ticker: T, usdAmount: amount, wallet: address, policy: sent(policy) };
+  const sellInputs = { ticker: T, side: "sell" as const, tokenAmount: sellTokens, wallet: address, policy: sent(policy) };
+  const buyCurrent = quoteIsCurrent(resolve, buyInputs);
+  const sellCurrent = quoteIsCurrent(sell, sellInputs);
+
   // auto-resolve on load and when inputs change (debounced)
   useEffect(() => {
     const n = Number(amount);
     if (!n || n <= 0) return;
-    const t = setTimeout(() => resolve.mutate({ ticker: T, usdAmount: amount, wallet: address, policy: sent(policy) }), 350);
+    const t = setTimeout(() => resolve.mutate(buyInputs), 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [T, amount, address, policy]);
@@ -58,7 +64,7 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
     if (side !== "sell") return;
     const n = Number(sellTokens);
     if (!n || n <= 0) return;
-    const t = setTimeout(() => sell.mutate({ ticker: T, side: "sell", tokenAmount: sellTokens, wallet: address, policy: sent(policy) }), 350);
+    const t = setTimeout(() => sell.mutate(sellInputs), 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [T, side, sellTokens, address, policy]);
@@ -147,7 +153,7 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
             <span>Route candidates{r ? ` · $${Number(amount).toLocaleString()} USDG` : ""}</span>
             <A href={r ? `/receipts?quote=${r.quoteHash}` : "/receipts"}><span className="chip">Scoring record</span></A>
           </div>
-          <ErrorState error={resolve.error} retry={() => resolve.mutate({ ticker: T, usdAmount: amount, wallet: address, policy: sent(policy) })} />
+          <ErrorState error={resolve.error} retry={() => resolve.mutate(buyInputs)} />
           {resolve.isPending && !r && <div className="p-5"><Loading rows={3} /></div>}
           {r && (
             <div className="overflow-x-auto">
@@ -299,7 +305,7 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
             {r?.simulation && !r.simulation.ok && <Banner kind="bad">Simulation failed: {r.simulation.error}</Banner>}
             <div className="flex items-center gap-4">
               <div className="flex-1">
-                <TxButton tx={r?.status === "ok" && r.executable !== false ? r.tx : null} label={`Buy ${T}`} className="btn btn-primary btn-lg w-full" approval={health.data && r ? { token: health.data.deployment.usdg, spender: r.router, amount: BigInt(r.fee?.totalUsdgIn ?? r.chosen?.usdgIn ?? "0") } : undefined} disabled={!r?.tx} />
+                <TxButton tx={buyCurrent && r?.status === "ok" && r.executable !== false ? r.tx : null} label={`Buy ${T}`} className="btn btn-primary btn-lg w-full" approval={health.data && r ? { token: health.data.deployment.usdg, spender: r.router, amount: BigInt(r.fee?.totalUsdgIn ?? r.chosen?.usdgIn ?? "0") } : undefined} disabled={!buyCurrent || !r?.tx} />
               </div>
               <button className="body-md muted whitespace-nowrap hover:opacity-70" onClick={() => setShowPolicy(!showPolicy)}>{showPolicy ? "Hide policy" : "Set policy"}</button>
             </div>
@@ -352,12 +358,12 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
             <ErrorState error={sell.error} />
             {sq?.simulation && !sq.simulation.ok && <Banner kind="bad">Simulation failed: {sq.simulation.error}</Banner>}
             <TxButton
-              tx={sq?.status === "ok" ? sq.tx : null}
+              tx={sellCurrent && sq?.status === "ok" ? sq.tx : null}
               label={`Sell ${sellTokens || "0"} ${T}`}
               className="btn btn-primary btn-lg w-full"
               approval={sq?.chosen ? { token: sq.chosen.representation, spender: sq.router, amount: BigInt(sq.chosen.tokenAmount) } : undefined}
               approvalSymbol={T}
-              disabled={!sq?.tx}
+              disabled={!sellCurrent || !sq?.tx}
               onSent={() => { wallet.refetch(); sell.reset(); setSellTokens(""); }}
             />
               </>

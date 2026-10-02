@@ -51,6 +51,16 @@ export function useApiPost<TIn, TOut>(path: string | ((v: TIn) => string)) {
   });
 }
 
+/**
+ * True when a quote mutation's result answers exactly these inputs: nothing in flight, and the last request was
+ * made with them. Quotes are re-requested a moment after an input changes, so for that moment the result on
+ * screen still belongs to the old inputs; a transaction must never be offered for signing from it.
+ * `inputs` has to be built the way the request was, key for key.
+ */
+export function quoteIsCurrent(m: { isPending: boolean; data: unknown; variables: unknown }, inputs: unknown): boolean {
+  return !m.isPending && m.data !== undefined && JSON.stringify(m.variables) === JSON.stringify(inputs);
+}
+
 // ---- shapes (subset of the resolver's responses) ----
 // Every field named `usdg…` is a raw 6-decimal integer string. Shares, ratios, units and stock-token amounts are 1e18-scaled.
 

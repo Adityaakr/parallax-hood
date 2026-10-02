@@ -6,7 +6,7 @@ import Link from "next/link";
 import { use, useEffect, useMemo, useState } from "react";
 import { useAccount, useReadContract } from "wagmi";
 import { useNetwork } from "@/lib/network";
-import { useApi, useApiPost, useResolverConfigured, type BasketDetail, type Health, type Migration, type RebalanceTrail, type MintQuote, type RedeemQuote, type Receipt, type Period } from "@/lib/api";
+import { useApi, useApiPost, quoteIsCurrent, useResolverConfigured, type BasketDetail, type Health, type Migration, type RebalanceTrail, type MintQuote, type RedeemQuote, type Receipt, type Period } from "@/lib/api";
 import { fmt, fmtUsdg, usd, short, compactUsd, usdgNumber, platformName } from "@/lib/format";
 import { Loading, ErrorState, Banner, Dot, PlatformTag, Tag, A } from "@/components/ui";
 import { TxButton } from "@/components/TxButton";
@@ -82,11 +82,17 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
   const usdgHeld = usdgBalance.data !== undefined ? usdgNumber(usdgBalance.data) : null;
   const redeemUsd = nav && Number(units) > 0 ? Number(units) * nav : null;
 
+  /* what the quote on screen has to have been asked with before its transaction may be signed */
+  const mintInputs = { budgetUsdg: amount, wallet: address };
+  const redeemInputs = { units, inKind, wallet: address };
+  const mintCurrent = quoteIsCurrent(mint, mintInputs);
+  const redeemCurrent = quoteIsCurrent(redeem, redeemInputs);
+
   useEffect(() => {
     if (!deployed) return;
     if (tab === "invest" && (!amountNum || belowMin)) return;
     if (tab === "redeem" && !Number(units)) return;
-    const t = setTimeout(() => (tab === "invest" ? mint.mutate({ budgetUsdg: amount, wallet: address }) : redeem.mutate({ units, inKind, wallet: address })), 350);
+    const t = setTimeout(() => (tab === "invest" ? mint.mutate(mintInputs) : redeem.mutate(redeemInputs)), 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deployed, tab, amount, units, inKind, address, symbol]);
@@ -419,7 +425,7 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
               {mq && mq.problems.length > 0 && <Banner kind="warn">{mq.problems.join(" · ")}</Banner>}
               {mq?.simulation && !mq.simulation.ok && <Banner kind="bad">Simulation failed: {mq.simulation.error}</Banner>}
               {d.deployed ? (
-                <TxButton tx={mq?.tx ?? null} label={`Invest ${usd(amountNum, 0)}`} className="btn btn-primary btn-lg w-full" approval={mq ? { token: mq.usdg, spender: mq.basket, amount: BigInt(mq.maxUsdgIn) } : undefined} disabled={!mq?.tx || belowMin} onSent={() => { b.refetch(); hist.refetch(); }} />
+                <TxButton tx={mintCurrent ? mq?.tx ?? null : null} label={`Invest ${usd(amountNum, 0)}`} className="btn btn-primary btn-lg w-full" approval={mq ? { token: mq.usdg, spender: mq.basket, amount: BigInt(mq.maxUsdgIn) } : undefined} disabled={!mintCurrent || !mq?.tx || belowMin} onSent={() => { b.refetch(); hist.refetch(); }} />
               ) : (
                 <button className="btn btn-primary btn-lg w-full" disabled>Not deployed on {network}</button>
               )}
@@ -456,7 +462,7 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
               <ErrorState error={redeem.error} />
               {rq?.simulation && !rq.simulation.ok && <Banner kind="bad">Simulation failed: {rq.simulation.error}</Banner>}
               {d.deployed ? (
-                <TxButton tx={rq?.tx ?? null} label={inKind ? `Redeem ${units} in kind` : `Redeem ${units} to USDG`} className="btn btn-primary btn-lg w-full" disabled={!rq?.tx} onSent={() => { b.refetch(); hist.refetch(); }} />
+                <TxButton tx={redeemCurrent ? rq?.tx ?? null : null} label={inKind ? `Redeem ${units} in kind` : `Redeem ${units} to USDG`} className="btn btn-primary btn-lg w-full" disabled={!redeemCurrent || !rq?.tx} onSent={() => { b.refetch(); hist.refetch(); }} />
               ) : (
                 <button className="btn btn-primary btn-lg w-full" disabled>Not deployed on {network}</button>
               )}
