@@ -1,0 +1,518 @@
+@import "tailwindcss";
+
+/* =====================================================================================================
+   Design tokens for the Syncrun reconstruction (reference: https://syncrun.framer.website).
+   Every value below is read from .recon/styles/<route>-<width>.json (getComputedStyle of the live site)
+   or from .recon/fonts.json (the site's own @font-face declarations). Nothing is rounded or "improved":
+   Framer sizes are rem-based at 16px, so 4.8rem renders as 76.8px and stays 76.8px here.
+   ===================================================================================================== */
+
+/* ---------- Webfonts: the 46 faces the reference declares, self-hosted, same unicode ranges ---------- */
+@font-face {
+  font-family: "Fragment Mono";
+  src: url("/assets/fonts/4iCr6K5wfMRRjxp0DA6-2CLnB45HhrUI.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: "Fragment Mono";
+  src: url("/assets/fonts/4iCr6K5wfMRRjxp0DA6-2CLnB41HhrUI.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Fragment Mono";
+  src: url("/assets/fonts/4iCr6K5wfMRRjxp0DA6-2CLnB4NHhg.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Halant";
+  src: url("/assets/fonts/G3LMROLIQQ3JESUFQMBVQ7G3BUTZZEGS.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/5vvr9Vy74if2I6bQbJvbw7SY1pQ.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/EOr0mi4hNtlgWNn9if640EZzXCo.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/Y9k9QrlZAqio88Klkmbd8VoMQc.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+1F00-1FFF;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/OYrD2tBIBPvoJXiIHnLoOXnY9M.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0370-03FF;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/JeYwfuaPfZHQhEG8U5gtPDZ7WQ.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/GrgcKwrN6d3Uz8EwcLHZxwEfC4.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2070, U+2074-207E, U+2080-208E, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/b6Y37FthZeALduNqHicBT6FutY.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/5A3Ce6C9YYmCjpQx9M4inSaKU.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/Qx95Xyt0Ka3SGhinnbXIGpEIyP4.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/6mJuEAguuIuMog10gGvH5d3cl8.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+1F00-1FFF;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/xYYWaj7wCU5zSQH0eXvSaS19wo.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0370-03FF;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/otTaNuNpVK4RbdlT7zDDdKvQBA.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/UjlFhCnUjxhNfep4oYBPqnEssyo.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2070, U+2074-207E, U+2080-208E, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/DolVirEGb34pEXEp8t8FQBSK4.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/hyOgCu0Xnghbimh0pE8QTvtt2AU.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/NeGmSOXrPBfEFIy5YZeHq17LEDA.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/oYaAX5himiTPYuN8vLWnqBbfD2s.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+1F00-1FFF;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/lEJLP4R0yuCaMCjSXYHtJw72M.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0370-03FF;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/cRJyLNuTJR5jbyKzGi33wU9cqIQ.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/yDtI2UI8XcEg1W2je9XPN3Noo.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2070, U+2074-207E, U+2080-208E, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/A0Wcc7NgXMjUuFdquHDrIZpzZw0.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/DpPBYI0sL4fYLgAkX8KXOPVt7c.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/4RAEQdEOrcnDkhHiiCbJOw92Lk.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/1K3W8DizY3v4emK8Mb08YHxTbs.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+1F00-1FFF;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/tUSCtfYVM1I1IchuyCwz9gDdQ.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0370-03FF;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/VgYFWiwsAC5OYxAycRXXvhze58.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/syRNPWzAMIrcJ3wIlPIP43KjQs.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2070, U+2074-207E, U+2080-208E, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/GIryZETIX4IFypco5pYZONKhJIo.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: "Libre Caslon Condensed";
+  src: url("/assets/fonts/EQWaTNALCQPCpHfp0iD2fo11FWI.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Libre Caslon Condensed";
+  src: url("/assets/fonts/ZN9aiTAaNCkpwyJ0m3I9kg2Yyoc.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Libre Caslon Condensed";
+  src: url("/assets/fonts/Ls8p2cA0PbfP3Ed3Q4BHKIdI4I.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Public Sans";
+  src: url("/assets/fonts/OVIDXH6HUTN3LFEX2SQ6MMG5U6756W4B.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Public Sans";
+  src: url("/assets/fonts/RFZLLA6NQUFAWMX5HJLUYJOAQDM2HW6L.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Public Sans";
+  src: url("/assets/fonts/F64OLKV3NFI24JV45YGRFK6BZAYYPSJK.woff2") format("woff2");
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Public Sans";
+  src: url("/assets/fonts/GDKOTCZ4SQDPR75LBVP7JSLM3MDN6HE6.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Public Sans";
+  src: url("/assets/fonts/OAK7VMJV4TSK7IAG757DLJGUX2HECNAS.woff2") format("woff2");
+  font-weight: 600;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Public Sans";
+  src: url("/assets/fonts/4QGWO2XSJ47NHK4SEA7ZMAX2NY3M6FUV.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Public Sans";
+  src: url("/assets/fonts/AF7QMSQHT2YNC4QTYQB4VKJEKY6V6BB7.woff2") format("woff2");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Public Sans";
+  src: url("/assets/fonts/HUT36TIUMR6VZ6YKKXYTFW2QSMCKUXF4.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Public Sans";
+  src: url("/assets/fonts/LPBJ7QEWWYBJVUP5PVUI5SUHKE3RTUXC.woff2") format("woff2");
+  font-weight: 900;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Public Sans";
+  src: url("/assets/fonts/A7JFTCD2AYEJ42QSKUNFUCCWESJSA5Q5.woff2") format("woff2");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Switzer";
+  src: url("/assets/fonts/6XPIMU23OJVRY676OG5YVJMWEHWICATX.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* ---------- Colour (Framer color styles, confirmed by computed values) ---------- */
+  --color-background: #f7f5f3;        /* Background */
+  --color-card-1: #eeeae6;            /* Card 1 (sand) */
+  --color-card-2: #ffffff;            /* Card 2 (white) */
+  --color-card-3: #1a1a1a;            /* Card 3 (ink): primary buttons, dark cards */
+  --color-heading: #262626;           /* Heading */
+  --color-paragraph: #262626;         /* Paragraph */
+  --color-paragraph-soft: #4f4f4f;    /* second most common text colour (lede, descriptions) */
+  --color-brand: #f24100;             /* Brand */
+  --color-brand-hover: #ff3700;       /* button/badge hover fill */
+  --color-brand-wash: rgba(242, 65, 0, 0.12);
+  --color-border-1: #d6d0c8;          /* Border V1: the dashed rules */
+  --color-border-2: rgba(0, 0, 0, 0.05);
+  --color-border-3: rgba(0, 0, 0, 0.15);
+  --color-tag-border: rgb(209, 203, 194);
+  --color-overlay: rgba(0, 0, 0, 0.15);
+  --color-link-default: #0000ee;      /* unstyled links inside rich text (legal pages) */
+  --color-transparent: rgba(7, 7, 7, 0);
+  --accent: var(--color-brand); --accent-dark: #d63a00; --accent-soft: rgba(242, 65, 0, 0.18); --good: #1f7a45; --bad: #c22f22; --warn: #b45309; --brand: var(--color-brand);
+
+  /* ---------- Type: family, size, weight, line-height, letter-spacing per role (1440) ---------- */
+  --font-serif: "Libre Caslon Condensed", serif;
+  --font-sans: "Public Sans", sans-serif;
+  --font-price: "Switzer", sans-serif;
+  --font-nav: "Inter", sans-serif;
+  --font-system: sans-serif;          /* Framer code components (calculator, badge) use the generic */
+
+  --text-h1: 76.8px;   --leading-h1: 88.32px;  --tracking-h1: -1.6px;   --weight-h1: 500;
+  --text-h2: 56px;     --leading-h2: 61.6px;   --tracking-h2: -1.6px;   --weight-h2: 500;
+  --text-metric: 48px; --leading-metric: 48px; --tracking-metric: -1.92px; --weight-metric: 500;
+  --text-h3: 32px;     --leading-h3: 41.6px;   --tracking-h3: 0;        --weight-h3: 400;   /* large review quote */
+  --text-h3b: 32px;    --leading-h3b: 32px;    --tracking-h3b: 0;       --weight-h3b: 500;  /* calculator figures */
+  --text-h4: 24px;     --leading-h4: 31.2px;   --tracking-h4: 0;        --weight-h4: 500;   /* card titles, quotes */
+  --text-h4b: 22px;    --leading-h4b: 22px;    --tracking-h4b: 0;       --weight-h4b: 500;  /* calculator results */
+  --text-h5: 20.8px;   --leading-h5: 22.88px;  --tracking-h5: -1px;     --weight-h5: 500;   /* reviewer name */
+  --text-logo: 20.8px; --leading-logo: 27.04px; --tracking-logo: 0;     --weight-logo: 500;
+  --text-h6: 19.2px;   --leading-h6: 23.04px;  --tracking-h6: -0.9px;   --weight-h6: 500;   /* avatar name */
+  --text-h7: 15.2px;   --leading-h7: 16.72px;  --tracking-h7: 0;        --weight-h7: 600;   /* UI mock rows */
+  --text-h7b: 15.2px;  --leading-h7b: 16.72px; --tracking-h7b: 0;       --weight-h7b: 900;  /* footer column heads */
+  --text-nav: 16px;    --leading-nav: 19.2px;  --tracking-nav: -0.32px; --weight-nav: 600;  /* Inter */
+  --text-button: 16px; --leading-button: 17.6px; --tracking-button: 0;  --weight-button: 600;
+  --text-main: 16px;   --leading-main: 22.4px; --tracking-main: 0.03px; --weight-main: 400;
+  --text-small-b: 14.4px; --leading-small-b: 14.4px; --tracking-small-b: -0.144px; --weight-small-b: 500;
+  --text-small: 12.8px; --leading-small: 10.24px; --tracking-small: 0.03px; --weight-small: 500; /* uppercase labels */
+  --text-badge: 12.8px; --leading-badge: 15.36px;                                              /* -20% */
+  --text-tiny: 11.2px; --leading-tiny: 11.2px;  --tracking-tiny: 1px;    --weight-tiny: 400;   /* MONTHLY TASKS */
+  --text-price: 40px;  --leading-price: 44px;  --tracking-price: -1.6px; --weight-price: 500;  /* Switzer */
+  --text-sys-12: 12px; --text-sys-11: 11px; --text-sys-10: 10px; --tracking-sys-caps: 0.55px;
+
+  /* ---------- Spacing, container, rhythm ---------- */
+  --container: 1300px;               /* section content width at 1440 */
+  --container-nav: 1220px;           /* navbar and footer boxes */
+  --container-inner: 1206px;
+  --page-gutter: 40px;               /* .sec padding-x; 20px at 390 */
+  --section-y: 100px;                /* Container padding-top/bottom */
+  --hero-top: 150px;
+  --stack-gap: 50px;                 /* heading block to content */
+  --heading-gap: 15px;               /* inside a heading block */
+  --card-gap: 10px;
+  --shell-pad: 7px;
+  --shell-gap: 7px;
+  --nav-pad-y: 15px;
+
+  /* ---------- Radii ---------- */
+  --radius-card: 10px;
+  --radius-shell: 15px;
+  --radius-tag: 30px;
+  --radius-pill: 35px;
+  --radius-badge: 31px;
+  --radius-round: 50px;
+  --radius-input: 40px;
+  --radius-icon: 20px;
+  --radius-8: 8px; --radius-11: 11px; --radius-5: 5px; --radius-7: 7px; --radius-16: 16px;
+
+  /* ---------- Borders, shadows, blur ---------- */
+  --dash: 1px dashed var(--color-border-1);
+  --shadow-inset-1: rgb(0, 0, 0) 0px 0px 0px 1px inset;
+  --shadow-float: rgba(0, 0, 0, 0.17) 0px 0.602187px 1.56569px -1.5px, rgba(0, 0, 0, 0.14) 0px 2.28853px 5.95019px -3px, rgba(0, 0, 0, 0.05) 0px 10px 26px -4.5px;
+  --shadow-card: rgba(0, 0, 0, 0.1) 0px 2px 4px 0px, rgba(0, 0, 0, 0.09) 0px 6px 6px 0px, rgba(0, 0, 0, 0.05) 0px 15px 9px 0px;
+  --shadow-badge: rgba(0, 0, 0, 0.3) 0px 2px 6px 0px;
+  --blur-nav: 10px;
+  --blur-glass: 5px;
+  --blur-soft: 2.5px;
+
+  /* ---------- Motion ---------- */
+  --ease: cubic-bezier(0.44, 0, 0.56, 1);
+  --duration-color: 0.4s;
+  --duration-bg: 0.5s;
+  /* appear effects are spring physics in the source project: stiffness 320, damping 60, mass 1 */
+  --spring-stiffness: 320; --spring-damping: 60; --spring-mass: 1;
+  --appear-y: 40px;
+  --appear-stagger: 0.2s;
+}
+
+/* Tailwind v4 theme: exposes the tokens as utilities (bg-card-1, font-serif, rounded-shell, ...) */
+@theme inline {
+  --color-background: var(--color-background);
+  --color-card-1: var(--color-card-1);
+  --color-card-2: var(--color-card-2);
+  --color-card-3: var(--color-card-3);
+  --color-heading: var(--color-heading);
+  --color-paragraph: var(--color-paragraph);
+  --color-paragraph-soft: var(--color-paragraph-soft);
+  --color-brand: var(--color-brand);
+  --color-brand-hover: var(--color-brand-hover);
+  --color-border-1: var(--color-border-1);
+  --color-border-2: var(--color-border-2);
+  --color-border-3: var(--color-border-3);
+  --font-serif: var(--font-serif);
+  --font-sans: var(--font-sans);
+  --font-price: var(--font-price);
+  --font-nav: var(--font-nav);
+  --radius-card: var(--radius-card);
+  --radius-shell: var(--radius-shell);
+  --radius-tag: var(--radius-tag);
+  --radius-pill: var(--radius-pill);
+  --radius-round: var(--radius-round);
+  --ease-site: var(--ease);
+  --breakpoint-tablet: 810px;
+  --breakpoint-desktop: 1200px;
+}
+
+html { color-scheme: light; -webkit-font-smoothing: antialiased; }
+body { background: var(--color-background); color: var(--color-paragraph); font-family: var(--font-sans); font-size: var(--text-main); line-height: var(--leading-main); letter-spacing: var(--tracking-main); font-weight: var(--weight-main); }
+
+/* ---------- Type roles as classes (values above; smaller breakpoints measured at 768 and 390) ---------- */
+.t-h1 { font-family: var(--font-serif); font-size: var(--text-h1); line-height: var(--leading-h1); letter-spacing: var(--tracking-h1); font-weight: var(--weight-h1); color: var(--color-heading); }
+.t-h2 { font-family: var(--font-serif); font-size: var(--text-h2); line-height: var(--leading-h2); letter-spacing: var(--tracking-h2); font-weight: var(--weight-h2); color: var(--color-heading); }
+.t-metric { font-family: var(--font-serif); font-size: var(--text-metric); line-height: var(--leading-metric); letter-spacing: var(--tracking-metric); font-weight: var(--weight-metric); color: var(--color-heading); }
+.t-h3 { font-family: var(--font-serif); font-size: var(--text-h3); line-height: var(--leading-h3); letter-spacing: var(--tracking-h3); font-weight: var(--weight-h3); color: var(--color-heading); }
+.t-h3b { font-family: var(--font-serif); font-size: var(--text-h3b); line-height: var(--leading-h3b); letter-spacing: var(--tracking-h3b); font-weight: var(--weight-h3b); color: var(--color-heading); }
+.t-h4 { font-family: var(--font-serif); font-size: var(--text-h4); line-height: var(--leading-h4); letter-spacing: var(--tracking-h4); font-weight: var(--weight-h4); color: var(--color-heading); }
+.t-h4b { font-family: var(--font-serif); font-size: var(--text-h4b); line-height: var(--leading-h4b); font-weight: var(--weight-h4b); color: var(--color-heading); }
+.t-h5 { font-family: var(--font-serif); font-size: var(--text-h5); line-height: var(--leading-h5); letter-spacing: var(--tracking-h5); font-weight: var(--weight-h5); color: var(--color-heading); }
+.t-logo { font-family: var(--font-serif); font-size: var(--text-logo); line-height: var(--leading-logo); font-weight: var(--weight-logo); color: var(--color-heading); }
+.t-h6 { font-family: var(--font-serif); font-size: var(--text-h6); line-height: var(--leading-h6); letter-spacing: var(--tracking-h6); font-weight: var(--weight-h6); color: var(--color-heading); }
+.t-h7 { font-family: var(--font-serif); font-size: var(--text-h7); line-height: var(--leading-h7); font-weight: var(--weight-h7); color: var(--color-heading); }
+.t-h7b { font-family: var(--font-serif); font-size: var(--text-h7b); line-height: var(--leading-h7b); font-weight: var(--weight-h7b); color: var(--color-heading); }
+.t-nav { font-family: var(--font-nav); font-size: var(--text-nav); line-height: var(--leading-nav); letter-spacing: var(--tracking-nav); font-weight: var(--weight-nav); color: var(--color-heading); }
+.t-button { font-family: var(--font-sans); font-size: var(--text-button); line-height: var(--leading-button); font-weight: var(--weight-button); }
+.t-main { font-family: var(--font-sans); font-size: var(--text-main); line-height: var(--leading-main); letter-spacing: var(--tracking-main); font-weight: var(--weight-main); color: var(--color-paragraph); }
+.t-main-soft { font-family: var(--font-sans); font-size: var(--text-main); line-height: var(--leading-main); letter-spacing: var(--tracking-main); font-weight: var(--weight-main); color: var(--color-paragraph-soft); }
+.t-small-b { font-family: var(--font-sans); font-size: var(--text-small-b); line-height: var(--leading-small-b); letter-spacing: var(--tracking-small-b); font-weight: var(--weight-small-b); }
+.t-small { font-family: var(--font-sans); font-size: var(--text-small); line-height: var(--leading-small); letter-spacing: var(--tracking-small); font-weight: var(--weight-small); text-transform: uppercase; }
+.t-badge { font-family: var(--font-sans); font-size: var(--text-badge); line-height: var(--leading-badge); letter-spacing: var(--tracking-small); font-weight: var(--weight-small); text-transform: uppercase; }
+.t-tiny { font-family: var(--font-sans); font-size: var(--text-tiny); line-height: var(--leading-tiny); letter-spacing: var(--tracking-tiny); font-weight: var(--weight-tiny); text-transform: uppercase; }
+.t-price { font-family: var(--font-price); font-size: var(--text-price); line-height: var(--leading-price); letter-spacing: var(--tracking-price); font-weight: var(--weight-price); color: var(--color-heading); }
+@media (max-width: 1199px) {
+  :root { --text-h1: 48px; --leading-h1: 55.2px; --text-h2: 40px; --leading-h2: 44px; --text-h3: 22.4px; --leading-h3: 29.12px; --text-h4: 22.4px; --leading-h4: 29.12px; }
+}
+@media (max-width: 809px) {
+  :root { --page-gutter: 20px; }
+}
