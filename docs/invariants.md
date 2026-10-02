@@ -375,14 +375,16 @@ cd contracts
 forge test                                            # 139 tests: unit, fuzz, invariant, harness smoke; no network
 FOUNDRY_PROFILE=ci forge test                         # same, 2048 fuzz runs
 forge test --match-contract FoundryTester -vvv        # harness smoke sequence and repro
-forge test --match-path 'test/fork/*' --no-match-path none   # fork test (or `pnpm contracts:fork-test` from the root)
+../scripts/fork-test.sh                               # fork test, pinned just behind the head (`pnpm contracts:fork-test`)
 medusa fuzz                                           # stateful campaign, config medusa.json
 echidna . --contract FuzzTester --config echidna.yaml
 ```
 
-The fork test is excluded from plain `forge test` by `no_match_path` in `foundry.toml`. It forks the public
-endpoint by default; `ROBINHOOD_RPC_URL` points it elsewhere and `ROBINHOOD_FORK_BLOCK` pins a block, which
-needs an archive endpoint because the public one keeps about ten minutes of state. `foundry.toml` also has a
+The fork test is excluded from plain `forge test` by `no_match_path` in `foundry.toml`. `scripts/fork-test.sh`
+pins a block a few behind the head so the eight tests share one state cache, and the run takes about ninety
+seconds on the public endpoint, inside the ten minutes of state it keeps. `ROBINHOOD_RPC_URL` points it
+elsewhere and `ROBINHOOD_FORK_BLOCK` re-runs an older block, which needs an archive endpoint. Last recorded run:
+2 October 2026, block 77,977,963, 8 passed. `foundry.toml` also has a
 `fuzz` profile (optimizer off, `via_ir` on) for the stateful campaigns; select it with `FOUNDRY_PROFILE=fuzz`.
 
 The TypeScript suites run with `pnpm test` from the repository root. The resolver integration test and the MCP

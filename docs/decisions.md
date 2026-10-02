@@ -114,4 +114,4 @@ Robinhood Chain. The agent path here is the MCP server acting through `AgentMand
 
 | Date | State |
 |---|---|
-| 2026-10-02 | Contracts, SDK, quoting client, resolver, MCP server and monitor ported. 139 Foundry tests, fork test against chain 4663, resolver and MCP end-to-end tests on the local chain. Not deployed to the testnet or mainnet yet. |
+| 2026-10-02 | Contracts, SDK, quoting client, resolver, MCP server, monitor and web app ported. 139 Foundry tests; the fork test passes 8 of 8 against chain 4663 at block 77,977,963; resolver (27), MCP (8), SDK (17), quoting client (8) and monitor (7) suites pass; the browser journey passes 7 of 7 steps on the local chain. Not deployed to the testnet (waiting on faucet funds) or to mainnet (waiting on approval of docs/mainnet-plan.md). |

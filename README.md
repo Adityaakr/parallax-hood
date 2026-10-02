@@ -118,11 +118,25 @@ the deploy scripts use, then against the real stock tokens, Chainlink feeds, USD
 registers the seven stocks, routes a buy and sells it back, buys through WETH in two hops, creates the pxMAG7
 vault, deposits USDG, redeems to USDG and redeems in kind, creates a mandate, has the agent buy and mint within
 it, and checks the mandate rejects an over-cap trade, a stock off the allowlist, a swap that pays the agent, a
-trade over the daily cap and anything after revocation. Pin a block and use an archive endpoint to run it:
+trade over the daily cap and anything after revocation. Nothing is sent to the chain: it all runs inside
+forge's fork. Last run, 2 October 2026, pinned at block 77,977,963 on the public RPC:
 
-```bash
-ROBINHOOD_RPC_URL=<archive endpoint> ROBINHOOD_FORK_BLOCK=<recent block> pnpm contracts:fork-test
 ```
+[PASS] test_agentBuysWithinTheMandate_ownerReceives()
+[PASS] test_agentMintsTheVaultWithinTheMandate()
+[PASS] test_buySharesThroughUniswap_thenSell()
+[PASS] test_buyThroughWeth_twoHops()
+[PASS] test_mag7Vault_mintRedeemAndRedeemInKind()     USDG spent on two pxMAG7 units: 200.719499
+[PASS] test_mandateBlocksEveryOutOfBoundsTrade()
+[PASS] test_referencePriceIsPerShare()                NVDA 231.3966 per token, 231.2174 per share
+[PASS] test_tokensFeedsAndUsdgMatchTheConfig()
+8 tests passed, 0 failed (87 s)
+```
+
+The browser journey (`pnpm --filter @parallax-hood/scripts e2e:browser`, against `pnpm mocks:up`) drives the app
+in Chromium with an injected test wallet: eligibility gate, network label, a 100 USDG purchase, a 50 USDG vault
+deposit, an in-kind redemption, then the portfolio and activity pages, with balances checked on chain after
+each step.
 
 Fuzzing beyond Foundry: `contracts/medusa.json` and `contracts/echidna.yaml` drive the harness in
 `contracts/test/fizz` (properties in [contracts/PROPERTIES.md](contracts/PROPERTIES.md)).
