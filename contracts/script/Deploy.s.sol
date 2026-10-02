@@ -55,15 +55,17 @@ abstract contract DeployBase is Script {
         }
     }
 
-    /// @dev The mainnet registry config: bsc.json, or the file named by MAINNET_CONFIG (relative to script/config).
-    function _mainnetConfig() internal view returns (string memory) {
-        return string.concat("/script/config/", vm.envOr("MAINNET_CONFIG", string("bsc.json")));
+    /// @dev The registry config for this deployment: mocks.json where a mock venue was deployed, else
+    ///      robinhood.json (or the file named by MAINNET_CONFIG, relative to script/config). Both are generated
+    ///      by scripts/gen-universe.mts from the official token and feed lists.
+    function _config(string memory dep) internal view returns (string memory) {
+        string memory file = _has(dep, "venue") ? "mocks.json" : vm.envOr("MAINNET_CONFIG", string("robinhood.json"));
+        return vm.readFile(string.concat(vm.projectRoot(), "/script/config/", file));
     }
-
 }
 
 /// @notice Step 1: core protocol. `USDG` from env or config; ADMIN = broadcaster (documented hackathon assumption).
-///   forge script script/Deploy.s.sol:DeployCore --rpc-url bsc --broadcast --verify
+///   Run with `--rpc-url robinhood` (or robinhood_testnet, or a local anvil).
 contract DeployCore is DeployBase {
     using stdJson for string;
 
@@ -80,6 +82,8 @@ contract DeployCore is DeployBase {
         ShareRouter router = new ShareRouter(registry);
         BasketFactory factory = new BasketFactory(registry, admin);
         AgentMandate mandate = new AgentMandate(router, registry, IERC20(usdg));
+        // Nothing here needs a keeper in steady state: ratios come from each token's own multiplier and prices
+        // from Chainlink. The role is held by the admin so a corporate-action checkpoint can still be posted.
         address keeper = vm.envOr("KEEPER_ADDRESS", admin);
         registry.grantRole(registry.KEEPER_ROLE(), keeper);
         registry.grantRole(registry.GUARDIAN_ROLE(), admin);
@@ -118,7 +122,7 @@ contract DeployCore is DeployBase {
 }
 
 /// @notice Step 0 (testnet / local without fork): mocks. Writes usdg/venue/mocks into deployments.
-///   forge script script/Deploy.s.sol:DeployMocks --rpc-url bsc_testnet --broadcast
+///   Run with `--rpc-url robinhood_testnet` or a local anvil; never against mainnet.
 contract DeployMocks is DeployBase {
     using stdJson for string;
 
@@ -130,7 +134,7 @@ contract DeployMocks is DeployBase {
         vm.startBroadcast(pk);
         MockUSDG usdg = new MockUSDG();
         MockSwapTarget venue = new MockSwapTarget();
-        venue.setKeeper(vm.envOr("KEEPER_ADDRESS", vm.addr(pk))); // the keeper mirrors mainnet prices onto it
+        venue.setKeeper(vm.envOr("KEEPER_ADDRESS", vm.addr(pk))); // may re-price the mock venue from mainnet
         venue.setPrice(address(usdg), 1e30); // 6-decimal USDG at $1: 1e18 USD per 1e18 raw units
         venue.setFeeBps(10);
         usdg.mint(address(venue), 1_000_000_000e6);
@@ -143,7 +147,7 @@ contract DeployMocks is DeployBase {
             string memory symbol = cfg.readString(string.concat(base, ".symbol"));
             bool erc8056 = cfg.readBool(string.concat(base, ".erc8056"));
             uint256 ratio = vm.parseUint(cfg.readString(string.concat(base, ".ratio")));
-            // USD per raw token, as the catalogue quotes it and as the venue prices it
+            // USD per token (1e18): the Chainlink answer its mainnet token had when mocks.json was generated
             uint256 tokenPrice = vm.parseUint(cfg.readString(string.concat(base, ".tokenPriceUsd")));
             MockStockToken t = new MockStockToken(string.concat(symbol, " (mock)"), symbol, erc8056);
             if (erc8056) t.setMultiplier(ratio);
@@ -164,20 +168,23 @@ contract DeployMocks is DeployBase {
     }
 }
 
-/// @notice Step 2: register underlyings + representations, allowlist swap targets, post initial attestations.
-///   Mainnet reads script/config/bsc.json (or $MAINNET_CONFIG, e.g. bsc-indices.json for the index universe
-///   only); testnet/local-mocks read mocks.json + deployments mocks.
+/// @notice Step 2: register underlyings and representations, allowlist the swap target, set the freshness
+///         windows and point each underlying at its reference price.
 contract ConfigureRegistry is DeployBase {
     using stdJson for string;
+
+    /// @dev Chainlink's stock feeds heartbeat every 24h, pause from Friday 20:00 to Sunday 20:00 New York time
+    ///      and pause a further 24h on a market holiday. Over every round since the feeds launched (June to
+    ///      October 2026) the longest gap between two answers on any stock feed was 95.98 hours, across a
+    ///      holiday weekend. Five days clears that; anything older is a feed that has stopped, not a weekend.
+    uint64 internal constant MAX_PRICE_AGE = 5 days;
 
     function run() external {
         uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         string memory dep = _readDeployments();
         StockRegistry registry = StockRegistry(_addr(dep, "registry"));
         bool mocks = _has(dep, "venue");
-        string memory cfg = vm.readFile(
-            string.concat(vm.projectRoot(), mocks ? "/script/config/mocks.json" : _mainnetConfig())
-        );
+        string memory cfg = _config(dep);
 
         vm.startBroadcast(pk);
         string[] memory tickers = cfg.readStringArray(".underlyings");
@@ -194,66 +201,65 @@ contract ConfigureRegistry is DeployBase {
                 registry.setAllowedTarget(targets[i], true);
             }
         }
+        // Robinhood publishes no attestation a contract can read, so that gate is off (an unbounded window).
+        // What stands in for it is on-chain: the token's own multiplier, checked against the last checkpoint
+        // within maxRatioStepBps, and the Chainlink feed.
+        registry.setLimits(type(uint64).max, registry.maxRatioAge(), registry.maxRatioStepBps());
+        registry.setPriceLimits(MAX_PRICE_AGE, registry.maxPriceStepBps());
+
         uint256 n = _arrayLen(cfg, ".representations");
         for (uint256 i = 0; i < n; i++) {
-            string memory base = string.concat(".representations[", vm.toString(i), "]");
-            string memory symbol = cfg.readString(string.concat(base, ".symbol"));
-            bytes32 uid = _ticker(cfg.readString(string.concat(base, ".ticker")));
-            bytes32 pid = _ticker(cfg.readString(string.concat(base, ".platform")));
-            address token;
-            IStockRegistry.RatioSource src;
-            uint256 ratio;
-            if (mocks) {
-                token = dep.readAddress(string.concat(".mocks.", symbol));
-                bool erc8056 = cfg.readBool(string.concat(base, ".erc8056"));
-                src = erc8056 ? IStockRegistry.RatioSource.ERC8056 : IStockRegistry.RatioSource.KEEPER;
-                ratio = vm.parseUint(cfg.readString(string.concat(base, ".ratio")));
-            } else {
-                token = cfg.readAddress(string.concat(base, ".token"));
-                bool erc8056 = keccak256(bytes(cfg.readString(string.concat(base, ".source")))) == keccak256("ERC8056");
-                src = erc8056 ? IStockRegistry.RatioSource.ERC8056 : IStockRegistry.RatioSource.KEEPER;
-                ratio = erc8056
-                    ? IERC8056(token).uiMultiplier()
-                    : vm.parseUint(cfg.readString(string.concat(base, ".initialRatio")));
-            }
-            if (!registry.getRepresentation(token).exists) {
-                registry.addRepresentation(token, uid, pid, src, ratio);
-                console2.log("registered", symbol, token);
-            }
+            _register(registry, cfg, dep, mocks, i);
         }
-        // initial attestation + market state so the system is live; the keeper refreshes both.
-        registry.postAttestation(_ticker("ondo"), uint64(block.timestamp));
-        registry.postAttestation(_ticker("bstock"), uint64(block.timestamp));
         for (uint256 i = 0; i < tickers.length; i++) {
             registry.postMarketState(_ticker(tickers[i]), true);
         }
-        // reference prices for the AgentMandate floor: Chainlink feeds where mainnet has them, otherwise the
-        // keeper posts Binance reference prices. Mocks seed the share price the venue was priced at.
+        vm.stopBroadcast();
+    }
+
+    /// @dev One representation and its underlying's reference price. Split out to keep `run` under the stack limit.
+    function _register(StockRegistry registry, string memory cfg, string memory dep, bool mocks, uint256 i) internal {
+        string memory base = string.concat(".representations[", vm.toString(i), "]");
+        string memory ticker = cfg.readString(string.concat(base, ".ticker"));
+        string memory symbol = cfg.readString(string.concat(base, ".symbol"));
+        bytes32 uid = _ticker(ticker);
+        address token;
+        IStockRegistry.RatioSource src;
+        uint256 ratio;
         if (mocks) {
-            for (uint256 i = 0; i < n; i++) {
-                string memory base = string.concat(".representations[", vm.toString(i), "]");
-                bytes32 uid = _ticker(cfg.readString(string.concat(base, ".ticker")));
-                (uint256 have,) = registry.referencePrice(uid);
-                if (have != 0) continue;
+            token = dep.readAddress(string.concat(".mocks.", symbol));
+            bool erc8056 = cfg.readBool(string.concat(base, ".erc8056"));
+            src = erc8056 ? IStockRegistry.RatioSource.ERC8056 : IStockRegistry.RatioSource.KEEPER;
+            ratio = vm.parseUint(cfg.readString(string.concat(base, ".ratio")));
+        } else {
+            token = cfg.readAddress(string.concat(base, ".token"));
+            bool erc8056 = keccak256(bytes(cfg.readString(string.concat(base, ".source")))) == keccak256("ERC8056");
+            src = erc8056 ? IStockRegistry.RatioSource.ERC8056 : IStockRegistry.RatioSource.KEEPER;
+            ratio = erc8056
+                ? IERC8056(token).uiMultiplier()
+                : vm.parseUint(cfg.readString(string.concat(base, ".initialRatio")));
+        }
+        if (!registry.getRepresentation(token).exists) {
+            registry.addRepresentation(token, uid, _ticker(cfg.readString(string.concat(base, ".platform"))), src, ratio);
+            console2.log("registered", symbol, token);
+        }
+        // The reference price behind the AgentMandate floor. Mainnet: the token's Chainlink feed, which prices
+        // the token with its multiplier in it, so the registry divides by the ratio. Mocks: the share price the
+        // mock venue was priced at, posted once and labelled a snapshot everywhere it is shown.
+        if (mocks) {
+            (uint256 have,) = registry.referencePrice(uid);
+            if (have == 0) {
                 uint256 tokenPrice = vm.parseUint(cfg.readString(string.concat(base, ".tokenPriceUsd")));
-                uint256 ratio = vm.parseUint(cfg.readString(string.concat(base, ".ratio")));
                 registry.postReferencePrice(uid, tokenPrice * 1e18 / ratio);
             }
-        } else {
-            string[] memory feedKeys = vm.parseJsonKeys(cfg, ".priceFeeds");
-            for (uint256 i = 0; i < feedKeys.length; i++) {
-                if (bytes(feedKeys[i])[0] == "_") continue;
-                address feed = cfg.readAddress(string.concat(".priceFeeds.", feedKeys[i]));
-                if (registry.priceFeedOf(_ticker(feedKeys[i])) != feed) {
-                    registry.setPriceFeed(_ticker(feedKeys[i]), feed);
-                }
-            }
+        } else if (cfg.keyExists(string.concat(".priceFeeds.", ticker)) && registry.priceFeedOf(uid) == address(0)) {
+            registry.setTokenPriceFeed(uid, cfg.readAddress(string.concat(".priceFeeds.", ticker)), token);
         }
-        vm.stopBroadcast();
     }
 }
 
-/// @notice Step 3: create the flagship basket from config and record its address.
+/// @notice Step 3: create every index in the config, cap its supply and record its address.
+///         SUPPLY_CAP_UNITS (whole units, default 0 = uncapped) bounds what a vault may have outstanding.
 contract CreateBasket is DeployBase {
     using stdJson for string;
 
@@ -261,26 +267,38 @@ contract CreateBasket is DeployBase {
         uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         string memory dep = _readDeployments();
         BasketFactory factory = BasketFactory(_addr(dep, "factory"));
-        bool mocks = _has(dep, "venue");
-        string memory cfg = vm.readFile(
-            string.concat(vm.projectRoot(), mocks ? "/script/config/mocks.json" : _mainnetConfig())
-        );
-        string memory name = cfg.readString(".basket.name");
-        string memory symbol = cfg.readString(".basket.symbol");
-        uint256 n = _arrayLen(cfg, ".basket.constituents");
-        IBasketVault.Constituent[] memory cs = new IBasketVault.Constituent[](n);
+        StockRegistry registry = StockRegistry(_addr(dep, "registry"));
+        string memory cfg = _config(dep);
+        uint256 capUnits = vm.envOr("SUPPLY_CAP_UNITS", uint256(0)) * 1e18;
+        uint256 count = _arrayLen(cfg, ".indices");
+        for (uint256 k = 0; k < count; k++) {
+            string memory idx = string.concat(".indices[", vm.toString(k), "]");
+            string memory symbol = cfg.readString(string.concat(idx, ".symbol"));
+            if (_has(_readDeployments(), string.concat("basket_", symbol))) continue;
+            IBasketVault.Constituent[] memory cs = _constituents(cfg, idx);
+            vm.startBroadcast(pk);
+            address basket = factory.createBasket(cfg.readString(string.concat(idx, ".name")), symbol, cs);
+            if (capUnits != 0) registry.setSupplyCap(basket, capUnits);
+            vm.stopBroadcast();
+            vm.writeJson(vm.toString(basket), _deploymentsPath(), string.concat(".basket_", symbol));
+            console2.log("basket", symbol, basket);
+        }
+    }
+
+    function _constituents(string memory cfg, string memory idx)
+        internal
+        view
+        returns (IBasketVault.Constituent[] memory cs)
+    {
+        uint256 n = _arrayLen(cfg, string.concat(idx, ".constituents"));
+        cs = new IBasketVault.Constituent[](n);
         for (uint256 i = 0; i < n; i++) {
-            string memory base = string.concat(".basket.constituents[", vm.toString(i), "]");
+            string memory base = string.concat(idx, ".constituents[", vm.toString(i), "]");
             cs[i] = IBasketVault.Constituent({
                 underlyingId: _ticker(cfg.readString(string.concat(base, ".ticker"))),
                 sharesPerUnit: vm.parseUint(cfg.readString(string.concat(base, ".sharesPerUnit"))),
                 maxIssuerBps: uint16(cfg.readUint(string.concat(base, ".maxIssuerBps")))
             });
         }
-        vm.startBroadcast(pk);
-        address basket = factory.createBasket(name, symbol, cs);
-        vm.stopBroadcast();
-        vm.writeJson(vm.toString(basket), _deploymentsPath(), string.concat(".basket_", symbol));
-        console2.log("basket", symbol, basket);
     }
 }

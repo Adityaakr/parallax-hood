@@ -14,7 +14,7 @@ remappings = [
   "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
   "forge-std/=lib/forge-std/src/",
 ]
-# Fork tests are opt-in: forge test --match-path 'test/fork/*' --fork-url $BSC_RPC_URL
+# Fork tests are opt-in: forge test --match-path 'test/fork/*' --fork-url https://rpc.mainnet.chain.robinhood.com
 no_match_path = "test/fork/*"
 
 [profile.default.fuzz]
@@ -33,15 +33,11 @@ line_length = 120
 tab_width = 4
 bracket_spacing = false
 
+# Public endpoints from docs.robinhood.com/chain/connecting. Rate-limited and not archive: use a keyed provider
+# (pass --rpc-url) for anything long-running.
 [rpc_endpoints]
-bsc = "${BSC_RPC_URL}"
-bsc_testnet = "${BSC_TESTNET_RPC_URL}"
-fork = "${FORK_RPC_URL}"
-
-[etherscan]
-bsc = { key = "${BSCSCAN_API_KEY}", chain = 56 }
-bsc_testnet = { key = "${BSCSCAN_API_KEY}", chain = 97 }
-
+robinhood = "https://rpc.mainnet.chain.robinhood.com"
+robinhood_testnet = "https://rpc.testnet.chain.robinhood.com"
 
 # >>> fizz fuzz profile
 [profile.fuzz]

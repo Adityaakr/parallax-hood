@@ -45,3 +45,7 @@ broadcast/
 cache/
 out/
 node_modules/
+
+# deployments on chains that live on one machine; the testnet and mainnet files are committed
+contracts/deployments/1337.json
+contracts/deployments/31337.json
