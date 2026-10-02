@@ -2,8 +2,8 @@
 import { useState } from "react";
 
 /**
- * Company mark from the Binance RWA catalogue, with a lettered fallback while it loads or when the catalogue
- * has no logo for that ticker.
+ * Company mark as the resolver's `logoUrl` gives it (Robinhood's own asset CDN, cdn.robinhood.com), with a
+ * lettered fallback while it loads or when there is no logo for that ticker.
  */
 export function StockLogo({ ticker, src, size = 28 }: { ticker: string; src?: string | null; size?: number }) {
   const [failed, setFailed] = useState(false);
@@ -16,7 +16,7 @@ export function StockLogo({ ticker, src, size = 28 }: { ticker: string; src?: st
     );
   }
   return (
-    // the catalogue serves these from bnbstatic; next/image would need a remote pattern per host
+    // served from the issuer's CDN; next/image would need a remote pattern per host
     // eslint-disable-next-line @next/next/no-img-element
     <img src={src} alt="" width={size} height={size} onError={() => setFailed(true)} className="rounded-full shrink-0 object-cover bg-white" style={{ width: size, height: size, border: "0.5px solid var(--line)" }} />
   );

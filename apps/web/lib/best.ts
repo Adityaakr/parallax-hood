@@ -2,14 +2,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { useApiBase, type ResolveResponse } from "./api";
 
-export type BestRoute = { ticker: string; symbol: string; platform: string; costPerShareUsd: number; premiumBps: number; venue: string; alternatives: number; spreadBps: number | null };
+export type BestRoute = { ticker: string; symbol: string; platform: string; costPerShareUsd: number; premiumBps: number; venue: string; eligible: boolean };
+
+/** The order size the stock list quotes every ticker at, in USDG. */
+export const LIST_QUOTE_USD = "500";
 
 /**
- * The search engine's price column: for every ticker, resolve one standard order and keep the winning
- * representation plus how far the next-best issuer sat. Sequential on purpose (one quoter call at a time keeps a
- * forked chain responsive); results are cached for a minute.
+ * The stock list's price column: for every ticker, resolve one standard order and keep the cheapest priced
+ * candidate, in dollars per underlying share. Sequential on purpose (one quoter call at a time keeps a forked
+ * chain responsive); results are cached for a minute.
  */
-export function useBestRoutes(tickers: string[], usdAmount = "500") {
+export function useBestRoutes(tickers: string[], usdAmount = LIST_QUOTE_USD) {
   const base = useApiBase();
   const key = tickers.join(",");
   const q = useQuery({
@@ -21,23 +24,12 @@ export function useBestRoutes(tickers: string[], usdAmount = "500") {
       const out: Record<string, BestRoute> = {};
       for (const ticker of tickers) {
         try {
-          const res = await fetch(`${base}/resolve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ticker, usdAmount, policy: { allowClosedMarket: true, maxClosedMarketPremiumBps: 10_000, maxPremiumBps: 10_000 } }) });
+          const res = await fetch(`${base}/resolve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ticker, side: "buy", usdAmount, policy: { allowClosedMarket: true, maxClosedMarketPremiumBps: 10_000, maxPremiumBps: 10_000 } }) });
           if (!res.ok) continue;
           const r = (await res.json()) as ResolveResponse;
-          const priced = r.candidates.filter((c) => c.costPerShareUsd !== "0").sort((a, b) => Number(a.costPerShareUsd) - Number(b.costPerShareUsd));
-          const best = priced[0];
+          const best = r.candidates.filter((c) => c.costPerShareUsd !== "0").sort((a, b) => Number(a.costPerShareUsd) - Number(b.costPerShareUsd))[0];
           if (!best) continue;
-          const second = priced[1];
-          out[ticker] = {
-            ticker,
-            symbol: best.symbol,
-            platform: best.platform,
-            costPerShareUsd: Number(best.costPerShareUsd),
-            premiumBps: best.premiumBps,
-            venue: best.venue,
-            alternatives: r.candidates.length,
-            spreadBps: second ? second.premiumBps - best.premiumBps : null,
-          };
+          out[ticker] = { ticker, symbol: best.symbol, platform: best.platform, costPerShareUsd: Number(best.costPerShareUsd), premiumBps: best.premiumBps, venue: best.venue, eligible: best.eligible };
         } catch {
           // a ticker that cannot be quoted right now simply has no price in the table
         }

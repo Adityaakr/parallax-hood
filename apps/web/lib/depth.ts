@@ -2,7 +2,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useApiBase, type ResolveResponse } from "./api";
 
-/** Order sizes (USDT) for the depth curve: cost per share of every representation as the order grows. */
+/** Order sizes (USDG) for the depth curve: cost per share of every representation as the order grows. */
 export const DEPTH_SIZES = [100, 250, 500, 1000, 2500, 5000] as const;
 
 export type DepthPoint = { usd: number; candidates: { symbol: string; platform: string; costPerShareUsd: number | null; premiumBps: number | null; eligible: boolean }[]; referencePrice: number | null };

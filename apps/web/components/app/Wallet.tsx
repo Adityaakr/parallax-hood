@@ -3,7 +3,7 @@
  * Connect and account UI on Privy, external wallets only.
  *
  * Privy owns the picker, which is why this file no longer enumerates connectors: one button opens it, and it
- * covers injected wallets, Binance Wallet, OKX, Coinbase and WalletConnect for anything on a phone. No email,
+ * covers injected wallets, OKX, Coinbase and WalletConnect for anything on a phone. No email,
  * no social, no embedded key: the user brings a wallet and signs every transaction themselves.
  */
 import { useEffect, useState } from "react";

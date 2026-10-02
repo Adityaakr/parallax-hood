@@ -2,14 +2,15 @@
 /*
  * The rebalance trail for one index.
  *
- * What a Parallax vault can actually do is narrow, and the section says so plainly: it may swap one issuer's
- * representation of a constituent for another issuer's, and only when the shares it holds strictly increase.
- * Weights never move, nothing is ever sold for cash, and the call is permissionless: the keeper takes the
- * accretive ones, and anyone may call one sooner. "Executed" is what the vault has emitted; "Next" is what is
- * accretive right now, priced live.
+ * What a Parallax vault can actually do is narrow, and the section says so plainly: it may swap one token that
+ * represents a constituent for another token that represents the same stock, and only when the shares it holds
+ * strictly increase. Weights never move, nothing is ever sold for cash, and the call is permissionless. On
+ * Robinhood Chain each stock has one token today, so the trail is usually empty; the rule is in the contract
+ * for the day a second one exists. "Executed" is what the vault has emitted; "Next" is what the resolver finds
+ * accretive right now.
  */
 import { useState } from "react";
-import { fmt, ago } from "@/lib/format";
+import { fmt, ago, platformName } from "@/lib/format";
 import { explorerTx } from "@/lib/config";
 import { Loading, Tag } from "@/components/ui";
 import { TxButton } from "@/components/TxButton";
@@ -17,7 +18,6 @@ import { Ic } from "./icons";
 import { StockLogo } from "./StockLogo";
 import type { Allocation, Migration, RebalanceTrail, Rebalance } from "@/lib/api";
 
-const issuerOf = (symbol: string) => (symbol.endsWith("on") ? "Ondo" : symbol.endsWith("B") ? "bStocks" : symbol);
 const day = (ts: number) => (ts ? new Date(ts * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "n/a");
 const share = (shares: string, total: string | null) => {
   const t = Number(total ?? "0");
@@ -39,7 +39,7 @@ function Split({ split, before, after, logo }: { split: NonNullable<Rebalance["s
             <span className="flex items-center gap-2 min-w-0">
               <StockLogo ticker={r.symbol} src={logo} size={20} />
               <span className="num truncate">{r.symbol}</span>
-              <span className="body-xs muted">{issuerOf(r.symbol)}</span>
+              <span className="body-xs muted">{platformName(r.platform)}</span>
             </span>
             <span className="flex items-center gap-2 whitespace-nowrap">
               <span className="num muted">{from ?? `${fmt(r.shares, 18, 4)} sh`}</span>
@@ -95,12 +95,12 @@ export function Rebalances({ trail, migrations, chainId, logos, minted, onExecut
     <section id="rebalance" className="flex flex-col gap-2 scroll-mt-[90px]">
       <div className="flex flex-wrap items-end justify-between gap-3 px-1 pt-2">
         <div className="flex flex-col gap-1" style={{ maxWidth: 560 }}>
-          <h2 className="h5">Auto-rebalance</h2>
+          <h2 className="h5">Rebalances</h2>
           <p className="body-xs muted">
-            The vault holds each stock through whichever issuer is cheapest, and moves between them on its own. A
-            rebalance may only swap one issuer&apos;s token for another&apos;s, and only when the shares held strictly
-            increase, so index weights never change and nothing is ever sold for cash. The call is permissionless: the
-            keeper takes what clears the floor, and anyone may call one sooner.
+            A rebalance may only swap one token that represents a stock for another token of the same stock, and
+            only when the shares held strictly increase, so index weights never change and nothing is ever sold
+            for cash. Anyone may call it. Each stock has one token on Robinhood Chain today, so there is usually
+            nothing to move; the rule is in the vault for when there is.
           </p>
         </div>
         <div className="seg">
@@ -113,11 +113,11 @@ export function Rebalances({ trail, migrations, chainId, logos, minted, onExecut
         <div className="stat">
           <div className="stat-label"><Ic.target width={14} height={14} />Floor</div>
           <div className="stat-value">{trail.data ? `${trail.data.minGainBps} bps` : "…"}</div>
-          <div className="stat-sub">the share gain a move must clear before the keeper spends gas on it</div>
+          <div className="stat-sub">the share gain a move must clear before the resolver proposes it</div>
         </div>
         <div className="stat">
           <div className="stat-label"><Ic.layers width={14} height={14} />Version</div>
-          <div className="stat-value">v{trail.data?.version ?? 1}</div>
+          <div className="stat-value">{trail.data ? `v${trail.data.version}` : "…"}</div>
           <div className="stat-sub">{executed.length === 0 ? "the composition it launched with" : `${executed.length} rebalance${executed.length === 1 ? "" : "s"} since launch`}</div>
         </div>
         <div className="stat">
@@ -161,8 +161,8 @@ export function Rebalances({ trail, migrations, chainId, logos, minted, onExecut
           {!trail.isLoading && executed.length === 0 && (
             <div className="rb-empty body-sm muted">
               {minted === 0
-                ? "No rebalance yet: nothing has been minted into this vault, so it holds no shares to move. The first mint buys every constituent from its cheapest issuer, and the trail starts from there."
-                : `No rebalance yet. Nothing has cleared the ${trail.data?.minGainBps ?? 30} bps floor since this index went live. Next shows what is on the table right now, priced live.`}
+                ? "No rebalance yet: nothing has been minted into this vault, so it holds no shares to move."
+                : `No rebalance yet. Nothing has cleared the ${trail.data ? `${trail.data.minGainBps} bps ` : ""}floor since this index went live. Next shows what is on the table right now.`}
             </div>
           )}
           {trail.data?.liveSince && (
@@ -179,7 +179,7 @@ export function Rebalances({ trail, migrations, chainId, logos, minted, onExecut
             <Card
               key={m.quoteHash}
               title={`${m.ticker}: ${m.from} → ${m.to}`}
-              stamp={`${m.fractionBps / 100}% of the ${m.from} held · would take the index to v${(trail.data?.version ?? 1) + 1}`}
+              stamp={`${m.fractionBps / 100}% of the ${m.from} held${trail.data ? ` · would take the index to v${trail.data.version + 1}` : ""}`}
               right="priced now"
               badge={<span className="num" style={{ color: "var(--good)" }}>+{m.gainBps} bps</span>}
               open={open === m.quoteHash}
@@ -193,7 +193,7 @@ export function Rebalances({ trail, migrations, chainId, logos, minted, onExecut
               <div className="rb-sources">
                 <span className="body-xs muted">Sources</span>
                 <span className="mono body-xs muted">quote {m.quoteHash.slice(0, 10)}…</span>
-                <span className="body-xs muted">{m.gainBps >= (trail.data?.minGainBps ?? 30) ? "above the floor: the keeper will take this one" : "below the floor: shown, but not worth its gas yet"}</span>
+                {trail.data && <span className="body-xs muted">{m.gainBps >= trail.data.minGainBps ? "above the floor" : "below the floor: shown, but not worth its gas yet"}</span>}
                 <span className="ml-auto"><TxButton tx={m.tx} label="Rebalance now" onSent={onExecuted} /></span>
               </div>
             </Card>
@@ -201,8 +201,8 @@ export function Rebalances({ trail, migrations, chainId, logos, minted, onExecut
           {!migrations.isLoading && next.length === 0 && (
             <div className="rb-empty body-sm muted">
               {minted === 0
-                ? "Nothing to move: the vault holds no shares yet. Issuer pairs are re-priced as soon as it does."
-                : "Nothing accretive right now. Every issuer pair was checked at 100 / 50 / 25 / 10% of the holdings, and none returns more shares than it gives up once the swap costs are paid."}
+                ? "Nothing to move: the vault holds no shares yet."
+                : "Nothing accretive right now. A move needs a second token for the same stock that returns more shares than it gives up once the swap costs are paid."}
             </div>
           )}
         </div>

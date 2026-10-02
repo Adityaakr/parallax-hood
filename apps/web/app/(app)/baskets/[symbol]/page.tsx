@@ -1,29 +1,27 @@
 "use client";
 /* One index: what it returned, what it costs to get in, what is inside it and in what proportion, then the
-   vault itself (backing, representations, migrations, receipts) when it is deployed on this network.
+   vault itself (backing, tokens held, rebalances, receipts) when it is deployed on this network.
    The invest panel is denominated in dollars; the vault still mints whole units of shares. */
 import Link from "next/link";
 import { use, useEffect, useMemo, useState } from "react";
 import { useAccount, useReadContract } from "wagmi";
 import { useNetwork } from "@/lib/network";
 import { useApi, useApiPost, useResolverConfigured, type BasketDetail, type Health, type Migration, type RebalanceTrail, type MintQuote, type RedeemQuote, type Receipt, type Period } from "@/lib/api";
-import { fmt, usd, bps, short, compactUsd } from "@/lib/format";
+import { fmt, fmtUsdg, usd, short, compactUsd, usdgNumber, platformName } from "@/lib/format";
 import { Loading, ErrorState, Banner, Dot, PlatformTag, Tag, A } from "@/components/ui";
 import { TxButton } from "@/components/TxButton";
-import { IssuerBar } from "@/components/IssuerBar";
 import { Page } from "@/components/Page";
 import { Tag as SiteTag } from "@/components/site/ui";
 import { Ic } from "@/components/app/icons";
 import { StockLogo } from "@/components/app/StockLogo";
-import { AllocationDonut, Band52w, CoverageNote, LogoCluster, PERIODS, PERIOD_LABELS, PERIOD_LONG, PeriodSeg, ReturnValue, Sparkline, pct, signColor } from "@/components/app/index-ui";
+import { AllocationRing, CoverageNote, LogoCluster, PERIODS, PERIOD_LABELS, PERIOD_LONG, PeriodSeg, ReturnValue, Sparkline, pct, signColor } from "@/components/app/index-ui";
 import { TokenMark } from "@/components/app/TokenMark";
 import { Rebalances } from "@/components/app/Rebalances";
 import { AddressLink } from "@/components/app/AddressLink";
 
-const issuerName = (p: string) => (p === "bstock" ? "bStocks" : p === "ondo" ? "Ondo" : p);
 const PRICE = { fontFamily: "var(--font-price)", fontWeight: 500, letterSpacing: "-1px" } as const;
 const BALANCE_OF = [{ type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ name: "a", type: "address" }], outputs: [{ type: "uint256" }] }] as const;
-/* round DOWN to cents: a Half/Max shortcut must never ask for more USDT than the wallet holds */
+/* round DOWN to cents: a Half/Max shortcut must never ask for more USDG than the wallet holds */
 const cents = (n: number) => (Math.floor(n * 100) / 100).toFixed(2);
 
 function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
@@ -34,18 +32,18 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
   const b = useApi<BasketDetail>(`/baskets/${symbol}`, { refetchInterval: 30_000 });
   const deployed = b.data?.deployed ?? false;
   const hist = useApi<{ receipts: Receipt[] }>(deployed && b.data?.address ? `/receipts?basket=${b.data.address}&limit=50` : null, { refetchInterval: 15_000 });
-  /* migrations quote every representation pair, so they load on their own and never hold the page */
+  /* rebalance candidates are quoted on their own, so they load on their own and never hold the page */
   const migrations = useApi<Migration[]>(deployed && b.data?.address ? `/migrations?basket=${b.data.address}&minGainBps=0` : null, { refetchInterval: 60_000 });
   /* what the vault has already rebalanced: its own Migrated events, joined to the record each quote hash points at */
   const trail = useApi<RebalanceTrail>(deployed ? `/baskets/${symbol}/rebalances` : null, { refetchInterval: 60_000 });
 
-  const [period, setPeriod] = useState<Period>("y1");
+  const [period, setPeriod] = useState<Period>("m1");
   const [tab, setTab] = useState<"invest" | "redeem">("invest");
   const [amount, setAmount] = useState("100");
   const [units, setUnits] = useState("1");
   const [inKind, setInKind] = useState(false);
   /* the panel is denominated in what the buyer spends: the resolver sizes the units so the vault can never pull more than this budget */
-  const mint = useApiPost<{ budgetUsdt: string; wallet?: string }, MintQuote>(`/baskets/${symbol}/quote-mint`);
+  const mint = useApiPost<{ budgetUsdg: string; wallet?: string }, MintQuote>(`/baskets/${symbol}/quote-mint`);
   const redeem = useApiPost<{ units: string; inKind: boolean; wallet?: string }, RedeemQuote>(`/baskets/${symbol}/quote-redeem`);
 
   const nav = b.data?.navPerUnitUsd ? Number(b.data.navPerUnitUsd) : null;
@@ -58,8 +56,9 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
   /* a unit is a claim on shares, so the panel quotes the position in dollars, not only in units */
   const quotedUnits = mint.data?.units ? Number(mint.data.units) / 1e18 : estUnits;
   const positionUsd = nav && quotedUnits ? quotedUnits * nav : null;
-  /* what the USDT actually buys, against what actually leaves the wallet: fee plus spread, as one number */
-  const spentUsd = mint.data ? Number(mint.data.expectedUsdt) / 1e18 : null;
+  /* what the USDG actually buys, against what actually leaves the wallet: fee plus spread, as one number.
+     USDG amounts from the resolver are raw 6-decimal integers; units and shares are 1e18-scaled. */
+  const spentUsd = mint.data ? usdgNumber(mint.data.expectedUsdg) : null;
   const costPct = positionUsd !== null && spentUsd ? ((positionUsd - spentUsd) / spentUsd) * 100 : null;
   const heldPerUnit = (b.data?.constituents ?? []).slice(0, 3).map((c) => ({ ticker: c.ticker, shares: fmt(c.sharesPerUnit, 18, 4) }));
   const balance = useReadContract({
@@ -70,29 +69,29 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
     query: { enabled: Boolean(address && b.data?.address) },
   });
   const held = balance.data ? Number(balance.data) / 1e18 : 0;
-  /* the USDT the wallet can actually spend, so Half/Max mean something */
+  /* the USDG the wallet can actually spend, so Half/Max mean something */
   const health = useApi<Health>("/health");
-  const usdtAddress = (mint.data?.usdt ?? health.data?.deployment.usdt) as `0x${string}` | undefined;
-  const usdtBalance = useReadContract({
-    address: usdtAddress,
+  const usdgAddress = (mint.data?.usdg ?? health.data?.deployment.usdg) as `0x${string}` | undefined;
+  const usdgBalance = useReadContract({
+    address: usdgAddress,
     abi: BALANCE_OF,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
-    query: { enabled: Boolean(address && usdtAddress) },
+    query: { enabled: Boolean(address && usdgAddress) },
   });
-  const usdtHeld = usdtBalance.data !== undefined ? Number(usdtBalance.data) / 1e18 : null;
+  const usdgHeld = usdgBalance.data !== undefined ? usdgNumber(usdgBalance.data) : null;
   const redeemUsd = nav && Number(units) > 0 ? Number(units) * nav : null;
 
   useEffect(() => {
     if (!deployed) return;
     if (tab === "invest" && (!amountNum || belowMin)) return;
     if (tab === "redeem" && !Number(units)) return;
-    const t = setTimeout(() => (tab === "invest" ? mint.mutate({ budgetUsdt: amount, wallet: address }) : redeem.mutate({ units, inKind, wallet: address })), 350);
+    const t = setTimeout(() => (tab === "invest" ? mint.mutate({ budgetUsdg: amount, wallet: address }) : redeem.mutate({ units, inKind, wallet: address })), 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deployed, tab, amount, units, inKind, address, symbol]);
 
-  const presets = useMemo(() => Array.from(new Set([minUsd, 25, 100, 500].filter((n) => n >= minUsd))).sort((a, c) => a - c).slice(0, 4), [minUsd]);
+  const presets = useMemo(() => Array.from(new Set([25, 100, 500, 1000].filter((n) => n >= minUsd))).sort((a, c) => a - c).slice(0, 4), [minUsd]);
 
   if (b.isLoading) return <Loading rows={8} />;
   if (b.error) return <ErrorState error={b.error} retry={() => b.refetch()} />;
@@ -117,7 +116,7 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
             <div className="flex flex-wrap items-center gap-2">
               <span className="chip"><TokenMark symbol={d.symbol} size={16} />{d.symbol}</span>
               <span className="chip">{constituentCount} constituents</span>
-              {d.deployed ? <span className="chip" style={{ borderColor: "transparent", background: "rgba(31,122,69,.12)", color: "var(--good)" }}>live on {network}</span> : <span className="chip">priced live · not deployed on {network}</span>}
+              {d.deployed ? <span className="chip" style={{ borderColor: "transparent", background: "rgba(31,122,69,.12)", color: "var(--good)" }}>live on {network}</span> : <span className="chip">priced · not deployed on {network}</span>}
               {d.address && <span className="body-xs muted"><AddressLink value={d.address} /></span>}
             </div>
             {d.thesis && <p className="body-md muted">{d.thesis}</p>}
@@ -135,7 +134,7 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
           <div className="stat">
             <div className="stat-label"><Ic.target width={14} height={14} />Min. investment</div>
             <div className="stat-value">{usd(d.minUsd, 0)}</div>
-            <div className="stat-sub">{d.minUsd <= 5 ? "the house floor; every constituent has a pool" : "enough to give a desk-only constituent its own $5 leg"}</div>
+            <div className="stat-sub">the smallest order the resolver quotes for this index</div>
           </div>
           <div className="stat">
             <div className="stat-label"><Ic.pie width={14} height={14} />NAV per unit</div>
@@ -145,7 +144,7 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
           <div className="stat">
             <div className="stat-label"><Ic.shield width={14} height={14} />Backing</div>
             <div className="stat-value"><Dot kind={d.backingOk ? "good" : "bad"} />{d.backingOk ? "≥ 1.00" : "below 1.00"}</div>
-            <div className="stat-sub">{d.deployed ? `${fmt(d.totalSupply, 18, 4)} units outstanding · held ÷ required shares, every constituent` : "enforced onchain once the vault is deployed"}</div>
+            <div className="stat-sub">{d.deployed ? `${fmt(d.totalSupply, 18, 4)} units outstanding · held ÷ required shares, every constituent` : "enforced on chain once the vault is deployed"}</div>
           </div>
         </div>
 
@@ -173,7 +172,7 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
             <span className="body-sm muted">by value of one unit at today&apos;s reference prices</span>
           </div>
           <div className="panel-body">
-            <AllocationDonut allocation={d.allocation} center={{ value: d.navPerUnitUsd ? usd(d.navPerUnitUsd) : "n/a", label: "per unit" }} />
+            <AllocationRing allocation={d.allocation} center={{ value: d.navPerUnitUsd ? usd(d.navPerUnitUsd) : "n/a", label: "per unit" }} />
           </div>
         </section>
 
@@ -181,7 +180,7 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
         <section className="flex flex-col gap-[10px]">
           <div className="flex items-end justify-between gap-3 px-1 pt-2">
             <h2 className="h5">Assets</h2>
-            <span className="body-sm muted">Prices and company figures from the Binance RWA catalogue; the path from a Chainlink feed, the underlying&apos;s daily closes, or a PancakeSwap pool oracle</span>
+            <span className="body-sm muted">Reference prices and the 7-day path from each stock&apos;s Chainlink feed, where this network has one</span>
           </div>
           <div className="grid sm:grid-cols-2 gap-[10px]">
             {d.allocation.map((a) => {
@@ -203,28 +202,16 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
                     </div>
                   </div>
                   <div className="flex items-end justify-between gap-3">
-                    <div className="flex flex-col gap-2">
-                      <Sparkline points={a.sparkline} width={150} height={40} />
-                      <Band52w f={a.fundamentals} price={a.priceUsd} />
-                    </div>
+                    <Sparkline points={a.sparkline} width={150} height={40} />
                     <div className="text-right body-xs muted">
                       <div>{c ? `${fmt(c.sharesPerUnit, 18, 4)} sh / unit` : ""}</div>
                       <div className="num">{usd(a.valuePerUnitUsd)} / unit</div>
                     </div>
                   </div>
-                  {a.fundamentals && (
-                    <div className="flex flex-wrap gap-x-5 gap-y-1 body-xs muted" style={{ borderTop: "var(--dash)", paddingTop: 12 }}>
-                      {a.fundamentals.marketCapUsd !== null && <span>Mkt cap <span className="num">{compactUsd(a.fundamentals.marketCapUsd)}</span></span>}
-                      {a.fundamentals.peRatioTtm !== null && <span>P/E <span className="num">{a.fundamentals.peRatioTtm.toFixed(1)}</span></span>}
-                      {a.fundamentals.dividendYield ? <span>Yield <span className="num">{(a.fundamentals.dividendYield * 100).toFixed(2)}%</span></span> : null}
-                      {a.fundamentals.volumeShares24h !== null && <span>24h vol <span className="num">{compactUsd(a.fundamentals.volumeShares24h).replace("$", "")}</span> sh</span>}
-                      <span>{a.priceSource === "chainlink" ? "chainlink feed" : a.priceSource === "market" ? "daily closes" : a.priceSource === "pool" ? "pool oracle" : "no price history"}</span>
-                    </div>
-                  )}
                   {why && <p className="body-sm muted" style={{ borderTop: "var(--dash)", paddingTop: 12 }}>{why}</p>}
                   <div className="flex items-center justify-between gap-2" style={{ borderTop: "var(--dash)", paddingTop: 12 }}>
                     <span className="body-xs muted">
-                      {c && c.representations.length > 0 ? c.representations.map((r) => `${r.symbol} · ${issuerName(r.platform)}`).join("  ") : "issuers priced at mint"}
+                      {c && c.representations.length > 0 ? c.representations.map((r) => `${r.symbol} · ${platformName(r.platform)}`).join("  ") : a.priceSource === "chainlink" ? "chainlink feed" : "priced at mint"}
                     </span>
                     <Link href={`/buy/${a.ticker}`} className="inline-flex items-center gap-1 body-sm font-medium" style={{ color: "var(--brand)" }}>Buy {a.ticker} <Ic.trend width={14} height={14} /></Link>
                   </div>
@@ -242,14 +229,11 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
                 <span>Vault</span>
                 <div className="flex items-center gap-3 body-sm muted">
                   {minted > 0 ? (
-                    <>
-                      <IssuerBar mix={d.issuerMix} />
-                      <span>{d.issuerMix.map((m) => `${issuerName(m.platform)} ${m.bps / 100}%`).join(" · ")}</span>
-                    </>
+                    d.issuerMix.length > 1 && <span>{d.issuerMix.map((m) => `${platformName(m.platform)} ${m.bps / 100}%`).join(" · ")}</span>
                   ) : (
                     <span>Nothing minted yet, so nothing is held: what follows is the unit this vault would buy, priced now</span>
                   )}
-                  <span className="num">{fmt(d.totalSupply, 18, 4)} units · {usd(d.navPerUnitUsd)} NAV · USDT {fmt(d.usdtBalance, 18, 2)}</span>
+                  <span className="num">{fmt(d.totalSupply, 18, 4)} units · {usd(d.navPerUnitUsd)} NAV · USDG {fmtUsdg(d.usdgBalance)}</span>
                 </div>
               </div>
               <table className="grid">
@@ -262,7 +246,7 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
                     {minted > 0 && <th>Required</th>}
                     {minted > 0 && <th>Held</th>}
                     {minted > 0 && <th>Backing</th>}
-                    <th>{minted > 0 ? "Representations (share vs cap)" : "Representations (route, depth)"}</th>
+                    <th>{minted > 0 ? "Tokens held (share of the constituent)" : "Token (route, depth)"}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -293,15 +277,15 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
                                     <span style={{ width: `${r.shareBps / 100}%`, background: r.shareBps / 100 > c.maxIssuerBps / 100 ? "var(--bad)" : "var(--accent)" }} />
                                   </div>
                                   <span className="num">{(r.shareBps / 100).toFixed(1)}%</span>
-                                  <span className="muted">{c.capActive ? `cap ${c.maxIssuerBps / 100}%` : c.singleIssuer ? "single issuer" : "no cap"}</span>
+                                  <span className="muted">{c.capActive ? `cap ${c.maxIssuerBps / 100}%` : "no cap"}</span>
                                   <span className="num muted">{fmt(r.shares, 18, 6)} sh</span>
                                 </>
                               ) : (
                                 <span
                                   className="num muted whitespace-nowrap"
-                                  title={`${r.route === "pool" ? `USDT in this token's PancakeSwap pools${r.poolFees?.length ? ` at ${r.poolFees.map((f) => `${f / 10_000}%`).join(", ")}` : ""}` : "no pool of depth: a mint fills this leg through the aggregator's desk"} · 1 token = ${r.ratio ? fmt(r.ratio, 18, 6) : "?"} shares`}
+                                  title={`${r.route === "pool" ? `USDG in this token's direct Uniswap v3 pools${r.poolFees?.length ? `, fee tiers ${r.poolFees.map((f) => `${f / 10_000}%`).join(", ")}` : ""}` : "no direct Uniswap v3 pool for this token on this network"} · 1 token = ${r.ratio ? fmt(r.ratio, 18, 6) : "?"} shares`}
                                 >
-                                  {r.route === "pool" ? `${compactUsd(Number(BigInt(r.poolUsdt ?? "0") / 10n ** 18n))} pool` : "desk only"}
+                                  {r.route === "pool" ? `${compactUsd(usdgNumber(r.poolUsdg ?? "0"))} pool` : "no direct pool"}
                                 </span>
                               )}
                               {!r.buyEligible && <Tag>not buy-eligible</Tag>}
@@ -367,15 +351,15 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
               {/* what leaves the wallet: the balance, the two shortcuts a buyer reaches for, the amount */}
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="body-sm muted inline-flex items-center gap-[6px]"><Ic.wallet width={15} height={15} /><span className="num">{usdtHeld === null ? "n/a" : cents(usdtHeld)}</span> USDT</span>
+                  <span className="body-sm muted inline-flex items-center gap-[6px]"><Ic.wallet width={15} height={15} /><span className="num">{usdgHeld === null ? "n/a" : cents(usdgHeld)}</span> USDG</span>
                   <div className="flex gap-2">
-                    <button className="preset" disabled={!usdtHeld} onClick={() => usdtHeld && setAmount(cents(usdtHeld / 2))}>Half</button>
-                    <button className="preset" disabled={!usdtHeld} onClick={() => usdtHeld && setAmount(cents(usdtHeld))}>Max</button>
+                    <button className="preset" disabled={!usdgHeld} onClick={() => usdgHeld && setAmount(cents(usdgHeld / 2))}>Half</button>
+                    <button className="preset" disabled={!usdgHeld} onClick={() => usdgHeld && setAmount(cents(usdgHeld))}>Max</button>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="chip shrink-0"><TokenMark symbol="USDT" size={18} />USDT</span>
-                  <input className="big-num w-full bg-transparent outline-none text-right" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" aria-label="Amount in USDT" />
+                  <span className="chip shrink-0"><TokenMark symbol="USDG" size={18} />USDG</span>
+                  <input className="big-num w-full bg-transparent outline-none text-right" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" aria-label="Amount in USDG" />
                 </div>
                 {/* the answer a buyer wants: what that money is worth once it is invested */}
                 <div className="flex items-center justify-between gap-3 body-sm">
@@ -385,7 +369,7 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
                     {positionUsd !== null && (mq || !d.deployed) ? (
                       <>
                         <TokenMark symbol={d.symbol} size={15} />≈ <span className="num">{usd(positionUsd)}</span>
-                        {costPct !== null && <span className="num muted" title="fee and venue spread, against the USDT actually spent">({costPct >= 0 ? "+" : "−"}{Math.abs(costPct).toFixed(2)}%)</span>}
+                        {costPct !== null && <span className="num muted" title="fee and venue spread, against the USDG actually spent">({costPct >= 0 ? "+" : "−"}{Math.abs(costPct).toFixed(2)}%)</span>}
                       </>
                     ) : mint.isPending ? <span className="skeleton inline-block w-24 h-4 align-middle" /> : "n/a"}
                   </span>
@@ -393,22 +377,22 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
                 <div className="flex flex-wrap gap-2">
                   {presets.map((n) => <button key={n} className="preset" data-on={amountNum === n} onClick={() => setAmount(String(n))}>{usd(n, 0)}</button>)}
                 </div>
-                {belowMin && <Banner kind="warn">{minUsd <= 5 ? `Minimum is ${usd(minUsd, 0)}.` : `Minimum is ${usd(minUsd, 0)} for this index: ${constituentCount === 0 ? "a constituent" : "one of its constituents"} trades only through the aggregator's desk, which fills no leg under $5, and this order has to give it that much.`}</Banner>}
+                {belowMin && <Banner kind="warn">Minimum is {usd(minUsd, 0)} for this index.</Banner>}
               </div>
 
               {/* the three numbers that decide the investment */}
               <div className="rounded-2xl" style={{ border: "var(--dash)" }}>
                 <div className="fee-row"><span className="muted">{PERIOD_LONG[period]} return</span><ReturnValue bps={ret} /></div>
-                <div className="fee-row"><span className="muted">Fee{mq?.fee ? ` · ${(mq.fee.bps / 100).toFixed(2)}%` : ""}</span><span className="num">{mq?.fee ? usd(fmt(mq.fee.usdt, 18, 2)) : d.deployed ? "…" : "n/a"}</span></div>
+                <div className="fee-row"><span className="muted">Fee{mq?.fee ? ` · ${(mq.fee.bps / 100).toFixed(2)}%` : ""}</span><span className="num">{mq?.fee ? `${fmtUsdg(mq.fee.usdg)} USDG` : d.deployed ? "…" : "n/a"}</span></div>
                 <div className="fee-row"><span className="muted">Minimum</span><span className="num">{usd(minUsd, 0)}</span></div>
-                {/* not a switch: the vault rebalances issuers for every holder at once, and the trail below says when */}
-                {d.deployed && <div className="fee-row"><span className="muted">Auto-rebalance</span><a className="link num" href="#rebalance">issuer moves · ≥{trail.data?.minGainBps ?? 30} bps</a></div>}
+                {/* not a switch: a rebalance applies to every holder at once, and the trail below says when one happened */}
+                {d.deployed && <div className="fee-row"><span className="muted">Rebalance rule</span><a className="link num" href="#rebalance">{trail.data ? `share gain ≥ ${trail.data.minGainBps} bps` : "…"}</a></div>}
               </div>
 
               <div className="body-sm muted">
                 {d.deployed
-                  ? <>Buys all {constituentCount} holdings at index weight, each from its cheapest eligible issuer. Unspent USDT is refunded in the same transaction.</>
-                  : <>Indicative, from live reference prices: {d.symbol} is not deployed on {network} yet, so there is no executable quote here.</>}
+                  ? <>Buys all {constituentCount} holdings at index weight, each through its cheapest eligible route. Unspent USDG is refunded in the same transaction.</>
+                  : <>Indicative, from reference prices: {d.symbol} is not deployed on {network}, so there is no executable quote here.</>}
               </div>
 
               {/* everything the vault actually does, one click away: hidden by default, never removed */}
@@ -423,8 +407,8 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
                 )}
                 {d.deployed && (
                   <>
-                    <div className="fee-row"><span className="muted">Expected cost incl. fee</span><span className="num">{mq ? `${fmt(mq.expectedUsdt, 18, 2)} USDT` : "…"}</span></div>
-                    <div className="fee-row"><span className="muted">Max USDT (unused refunded)</span><span className="num">{mq ? fmt(mq.maxUsdtIn, 18, 2) : "…"}</span></div>
+                    <div className="fee-row"><span className="muted">Expected cost incl. fee</span><span className="num">{mq ? `${fmtUsdg(mq.expectedUsdg)} USDG` : "…"}</span></div>
+                    <div className="fee-row"><span className="muted">Max USDG (unused refunded)</span><span className="num">{mq ? fmtUsdg(mq.maxUsdgIn) : "…"}</span></div>
                     <div className="fee-row"><span className="muted">Simulation</span><span className="num">{mq?.simulation ? (mq.simulation.ok ? `ok${mq.simulation.approvalNeeded ? " · approval first" : ""}` : "failed") : "…"}</span></div>
                     {mq && <div className="fee-row"><span className="muted">Quote</span><span className="mono body-xs">{mq.quoteHash.slice(0, 18)}…</span></div>}
                   </>
@@ -435,7 +419,7 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
               {mq && mq.problems.length > 0 && <Banner kind="warn">{mq.problems.join(" · ")}</Banner>}
               {mq?.simulation && !mq.simulation.ok && <Banner kind="bad">Simulation failed: {mq.simulation.error}</Banner>}
               {d.deployed ? (
-                <TxButton tx={mq?.tx ?? null} label={`Invest ${usd(amountNum, 0)}`} className="btn btn-primary btn-lg w-full" approval={mq ? { token: mq.usdt, spender: mq.basket, amount: BigInt(mq.maxUsdtIn) } : undefined} disabled={!mq?.tx || belowMin} onSent={() => { b.refetch(); hist.refetch(); }} />
+                <TxButton tx={mq?.tx ?? null} label={`Invest ${usd(amountNum, 0)}`} className="btn btn-primary btn-lg w-full" approval={mq ? { token: mq.usdg, spender: mq.basket, amount: BigInt(mq.maxUsdgIn) } : undefined} disabled={!mq?.tx || belowMin} onSent={() => { b.refetch(); hist.refetch(); }} />
               ) : (
                 <button className="btn btn-primary btn-lg w-full" disabled>Not deployed on {network}</button>
               )}
@@ -454,17 +438,17 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
               </div>
               <div className="relative h-px" style={{ background: "var(--line-2)" }}><span className="swap-orb absolute left-1/2 -translate-x-1/2 -translate-y-1/2"><span style={{ fontSize: 18 }}>↓</span></span></div>
               <div className="flex flex-col gap-3 pt-2">
-                <div className="flex items-center justify-between body-md"><span>You receive</span><span className="chip">{inKind ? <LogoCluster items={d.allocation} size={16} max={4} /> : <TokenMark symbol="USDT" size={16} />}{inKind ? "the underlying tokens" : "USDT"}</span></div>
-                <div className="big-num">{rq ? (inKind ? `${rq.slices.length} slices` : `${fmt(rq.usdtOut, 18, 2)} USDT`) : redeem.isPending ? <span className="skeleton inline-block w-40 h-8" /> : d.deployed ? "n/a" : "not deployed"}</div>
-                <div className="body-sm muted">{inKind ? "Pro-rata tokens of every representation plus vault USDT. No oracle, cannot be paused." : "Each representation is sold through its best exit; anything without liquidity is delivered in kind."}</div>
+                <div className="flex items-center justify-between body-md"><span>You receive</span><span className="chip">{inKind ? <LogoCluster items={d.allocation} size={16} max={4} /> : <TokenMark symbol="USDG" size={16} />}{inKind ? "the underlying tokens" : "USDG"}</span></div>
+                <div className="big-num">{rq ? (inKind ? `${rq.slices.length} slices` : `${fmtUsdg(rq.usdgOut)} USDG`) : redeem.isPending ? <span className="skeleton inline-block w-40 h-8" /> : d.deployed ? "n/a" : "not deployed"}</div>
+                <div className="body-sm muted">{inKind ? "Your pro-rata slice of every token the vault holds, plus vault USDG. No oracle, cannot be paused." : "Each token is sold through its best exit; anything without liquidity is delivered in kind."}</div>
               </div>
               {rq && (
                 <div className="rounded-2xl" style={{ border: "var(--dash)" }}>
-                  {!inKind && <div className="fee-row"><span className="muted">Protocol fee{rq.fee ? ` ${(rq.fee.bps / 100).toFixed(2)}%` : ""}</span><span className="num">{rq.fee ? `${fmt(rq.fee.usdt, 18, 2)} USDT` : "…"}</span></div>}
+                  {!inKind && <div className="fee-row"><span className="muted">Protocol fee{rq.fee ? ` ${(rq.fee.bps / 100).toFixed(2)}%` : ""}</span><span className="num">{rq.fee ? `${fmtUsdg(rq.fee.usdg)} USDG` : "…"}</span></div>}
                   {inKind && <div className="fee-row"><span className="muted">Protocol fee</span><span className="num">none in kind</span></div>}
-                  {!inKind && <div className="fee-row"><span className="muted">Min USDT after fee (enforced onchain)</span><span className="num">{fmt(rq.minUsdtOut, 18, 2)}</span></div>}
+                  {!inKind && <div className="fee-row"><span className="muted">Min USDG after fee (enforced on chain)</span><span className="num">{fmtUsdg(rq.minUsdgOut)}</span></div>}
                   {rq.slices.map((s) => (
-                    <div key={s.symbol} className="fee-row"><span className="muted"><span className="num">{s.symbol}</span> · {issuerName(s.platform)}</span><span className="num">{s.deliveredInKind ? `${fmt(s.tokens, 18, 4)} in kind` : `${fmt(s.sold!.usdtOut, 18, 2)} USDT`}</span></div>
+                    <div key={s.symbol} className="fee-row"><span className="muted"><span className="num">{s.symbol}</span> · {platformName(s.platform)}</span><span className="num">{s.deliveredInKind || !s.sold ? `${fmt(s.tokens, 18, 4)} in kind` : `${fmtUsdg(s.sold.usdgOut)} USDG`}</span></div>
                   ))}
                   <div className="fee-row"><span className="muted">Simulation</span><span className="num">{rq.simulation ? (rq.simulation.ok ? "ok" : "failed") : "…"}</span></div>
                 </div>
@@ -472,7 +456,7 @@ function BasketPageInner({ params }: { params: Promise<{ symbol: string }> }) {
               <ErrorState error={redeem.error} />
               {rq?.simulation && !rq.simulation.ok && <Banner kind="bad">Simulation failed: {rq.simulation.error}</Banner>}
               {d.deployed ? (
-                <TxButton tx={rq?.tx ?? null} label={inKind ? `Redeem ${units} in kind` : `Redeem ${units} to USDT`} className="btn btn-primary btn-lg w-full" disabled={!rq?.tx} onSent={() => { b.refetch(); hist.refetch(); }} />
+                <TxButton tx={rq?.tx ?? null} label={inKind ? `Redeem ${units} in kind` : `Redeem ${units} to USDG`} className="btn btn-primary btn-lg w-full" disabled={!rq?.tx} onSent={() => { b.refetch(); hist.refetch(); }} />
               ) : (
                 <button className="btn btn-primary btn-lg w-full" disabled>Not deployed on {network}</button>
               )}

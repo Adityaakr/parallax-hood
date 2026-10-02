@@ -1,15 +1,15 @@
 "use client";
 import { Fragment, Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useApi, type Receipt } from "@/lib/api";
-import { fmt, short, ago } from "@/lib/format";
+import { useApi, type Health, type Receipt } from "@/lib/api";
+import { fmt, fmtUsdg, short, ago, venueName, platformName } from "@/lib/format";
 import { Loading, ErrorState, Banner, Tag, A } from "@/components/ui";
 import { useNetwork } from "@/lib/network";
 import { explorerTx } from "@/lib/config";
 import { Page, PageHead } from "@/components/Page";
 import { AddressLink } from "@/components/app/AddressLink";
 
-type Cand = { symbol: string; platform: string; venue: string; costPerShareUsd: string; premiumBps: number; slippageBps: number; attestationAgeHours: number | null; eligible: boolean; reasons: string[] };
+type Cand = { symbol: string; platform: string; venue: string; costPerShareUsd: string; premiumBps: number; slippageBps: number; eligible: boolean; reasons: string[] };
 type QuoteDoc = { hash: string; kind: string; createdAt: number; record: Record<string, unknown> & { candidates?: Cand[]; chosen?: { why?: string } | null; breakdown?: unknown; policy?: unknown; why?: string; dataSource?: string } };
 
 function Why({ hash }: { hash: string }) {
@@ -42,7 +42,6 @@ function Why({ hash }: { hash: string }) {
               <th>Cost / share</th>
               <th>Premium</th>
               <th>Slippage</th>
-              <th>Attestation</th>
               <th>Result</th>
             </tr>
           </thead>
@@ -50,13 +49,12 @@ function Why({ hash }: { hash: string }) {
             {cands.map((c) => (
               <tr key={c.symbol}>
                 <td className="num">
-                  {c.symbol} <Tag>{c.platform}</Tag>
+                  {c.symbol} <Tag>{platformName(c.platform)}</Tag>
                 </td>
-                <td className="num text-xs">{c.venue}</td>
+                <td className="num text-xs">{venueName(c.venue)}</td>
                 <td className="num">{c.costPerShareUsd === "0" ? "n/a" : `$${c.costPerShareUsd}`}</td>
                 <td className="num">{c.costPerShareUsd === "0" ? "n/a" : `${c.premiumBps} bps`}</td>
                 <td className="num">{c.costPerShareUsd === "0" ? "n/a" : `${c.slippageBps} bps`}</td>
-                <td className="num">{c.attestationAgeHours === null ? "?" : `${Number(c.attestationAgeHours).toFixed(1)}h`}</td>
                 <td className="text-xs">{c.eligible ? "eligible" : c.reasons.join("; ")}</td>
               </tr>
             ))}
@@ -65,7 +63,7 @@ function Why({ hash }: { hash: string }) {
       )}
       {Array.isArray(r.breakdown) && (
         <div className="text-xs">
-          <div className="font-medium">Basket fills</div>
+          <div className="font-medium">Index fills</div>
           {(r.breakdown as Array<{ ticker: string; fills: Array<{ symbol: string; shares: string; costPerShareUsd: string; premiumBps: number | null }> }>).map((b) => (
             <div key={b.ticker}>
               <span className="num">{b.ticker}</span>: {b.fills.map((f) => `${f.symbol} ${fmt(f.shares, 18, 6)} sh @ $${f.costPerShareUsd}${f.premiumBps === null ? "" : ` (${f.premiumBps} bps)`}`).join(", ")}
@@ -96,6 +94,8 @@ function ReceiptsInner() {
   if (quote) qs.set("quoteHash", quote);
   qs.set("limit", "100");
   const q = useApi<{ receipts: Receipt[] }>(`/receipts?${qs}`, { refetchInterval: 10_000 });
+  /* `amount_in` is in the units of `token_in`: raw USDG has 6 decimals, a stock token being sold has 18 */
+  const usdg = useApi<Health>("/health").data?.deployment.usdg.toLowerCase();
   const [open, setOpen] = useState<string | null>(quote ?? null);
 
   return (
@@ -103,7 +103,7 @@ function ReceiptsInner() {
       <PageHead
         eyebrow="Audit trail"
         title="Receipts"
-        lede={<>Every fill emits a <span className="mono">RouteReceipt</span> with the shares received, the ratio and attestation timestamp at execution, and a <span className="mono">quoteHash</span> that links to the resolver&apos;s scoring record, the &quot;why&quot; behind every route.</>}
+        lede={<>Every fill emits a <span className="mono">RouteReceipt</span> with the shares received and the token&apos;s multiplier at execution, and a <span className="mono">quoteHash</span> that links to the resolver&apos;s scoring record, the &quot;why&quot; behind every route.</>}
       />
       <div className="flex gap-2 flex-wrap items-center">
         <input className="input !w-64 num" placeholder="actor 0x…" value={actor} onChange={(e) => setActor(e.target.value)} />
@@ -116,13 +116,13 @@ function ReceiptsInner() {
       </div>
       {quote && !q.data?.receipts.length && (
         <div className="panel p-5">
-          <div className="text-sm font-medium mb-2">Scoring record {quote.slice(0, 18)}… (no onchain receipt yet)</div>
+          <div className="text-sm font-medium mb-2">Scoring record {quote.slice(0, 18)}… (no receipt on chain yet)</div>
           <Why hash={quote} />
         </div>
       )}
       {q.isLoading && <Loading rows={5} />}
       <ErrorState error={q.error} retry={() => q.refetch()} />
-      {q.data && q.data.receipts.length === 0 && !quote && <Banner>No receipts yet on this network. Buy a stock or mint a basket and it will appear here within a few seconds.</Banner>}
+      {q.data && q.data.receipts.length === 0 && !quote && <Banner>No receipts yet on this network. Buy a stock or mint an index and it will appear here within a few seconds.</Banner>}
       {q.data && q.data.receipts.length > 0 && (
         <div className="panel overflow-x-auto">
           <table className="grid wide">
@@ -135,8 +135,7 @@ function ReceiptsInner() {
                 <th>Representation</th>
                 <th>Tokens out</th>
                 <th>Shares out</th>
-                <th>Ratio</th>
-                <th>Attested</th>
+                <th>Shares / token</th>
                 <th>Actor</th>
                 <th>Tx</th>
                 <th>Why</th>
@@ -145,7 +144,8 @@ function ReceiptsInner() {
             <tbody>
               {q.data.receipts.map((r) => {
                 const key = `${r.tx_hash}-${r.log_index}`;
-                const isSell = r.token_in.toLowerCase() === r.representation.toLowerCase();
+                const tokenIn = r.token_in.toLowerCase();
+                const usdgIn = usdg ? tokenIn === usdg : tokenIn !== r.representation.toLowerCase();
                 const ex = explorerTx(chainId, r.tx_hash);
                 return (
                   <Fragment key={key}>
@@ -156,13 +156,12 @@ function ReceiptsInner() {
                       </td>
                       <td className="font-medium">{r.underlying}</td>
                       <td className="num">
-                        {fmt(r.amount_in, 18, isSell ? 6 : 2)} {isSell ? "tok" : "USDT"}
+                        {usdgIn ? `${fmtUsdg(r.amount_in)} USDG` : `${fmt(r.amount_in, 18, 6)} tok`}
                       </td>
                       <td className="text-xs"><AddressLink value={r.representation} truncate /></td>
                       <td className="num">{fmt(r.tokens_out, 18, 6)}</td>
                       <td className="num">{fmt(r.shares_out, 18, 6)}</td>
                       <td className="num">{fmt(r.ratio, 18, 6)}</td>
-                      <td className="text-xs muted">{r.attested_at ? ago(r.attested_at) : "n/a"}</td>
                       <td className="text-xs"><AddressLink value={r.actor} truncate /></td>
                       <td className="text-xs num">{ex ? <A href={ex}>{short(r.tx_hash, 8)}</A> : short(r.tx_hash, 8)}</td>
                       <td>
@@ -173,7 +172,7 @@ function ReceiptsInner() {
                     </tr>
                     {open === r.quote_hash && (
                       <tr>
-                        <td colSpan={12}>
+                        <td colSpan={11}>
                           <div className="p-2">
                             <div className="text-xs muted mb-2">
                               quote <span className="num">{r.quote_hash}</span>

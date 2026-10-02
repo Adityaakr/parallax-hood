@@ -6,15 +6,19 @@
  * horizontal strip make you re-read the row every time, while a column holds its order and shows where you
  * are. The rail collapses to icons for anyone who already knows the shape, and the choice is remembered.
  * Everything else is the site's own language, the sand field, the dashed rules and the same type.
+ *
+ * Three things are on every product page because the shell owns them: which network this is and what kind
+ * (from the resolver's own label), a standing banner when anything on that network is a mock, and the
+ * eligibility notice. The first visit also has to pass the eligibility dialog before the app can be used.
  */
 import "./app.css";
 import "../../app/components.css";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useNetwork } from "@/lib/network";
-import { NETWORKS } from "@/lib/config";
+import { useNetworkLabel } from "@/lib/api";
 import { Ic } from "./icons";
+import { ELIGIBILITY_NOTICE, EligibilityDialog, useEligibility } from "./Eligibility";
 import { Faucet } from "./Faucet";
 import { WalletRow } from "./Wallet";
 
@@ -30,7 +34,9 @@ const NAV: { label: string; icon: keyof typeof Ic; href: string; match: string[]
 export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const path = usePathname();
-  const { chainId } = useNetwork();
+  const { label, fromResolver } = useNetworkLabel();
+  const { confirmed, confirm } = useEligibility();
+  const locked = confirmed !== true;
   const [q, setQ] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const search = useRef<HTMLInputElement>(null);
@@ -56,11 +62,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="app-canvas app-shell" data-collapsed={collapsed || undefined}>
-      <aside className="rail">
-        <Link href="/" className="rail-brand" title="Parallax home">
+      <aside className="rail" inert={locked}>
+        <Link href="/" className="rail-brand" title="Parallax on Robinhood Chain, home">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/parallax-icon.svg" alt="" width={26} height={26} />
-          <span className="rail-word">Parallax</span>
+          <span className="rail-word">Parallax<span className="rail-sub">on Robinhood Chain</span></span>
         </Link>
 
         <nav className="rail-nav">
@@ -88,13 +94,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <div className="app-body">
+      <div className="app-body" inert={locked}>
         <div className="toolbar">
-          {/* one network: the contracts are on BSC mainnet, so there is nothing to switch between */}
-          <span className="ws" title="Parallax runs on BNB Smart Chain">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/badge-bnb.svg" alt="" width={26} height={26} className="ws-tile" style={{ background: "transparent" }} />
-            <span className="body-sm font-medium truncate">{NETWORKS[chainId].name}</span>
+          {/* the network, named by the resolver that answers for it, and its kind in capitals so a test chain is never mistaken for the real one */}
+          <span className="ws net" data-kind={label.kind} title={fromResolver ? `Chain id ${label.chainId}, as reported by the resolver` : `Chain id ${label.chainId}. The resolver is not answering, so this label comes from the app's own configuration.`}>
+            <span className="net-dot" aria-hidden />
+            <span className="body-sm font-medium truncate">{label.name}</span>
+            <span className="tag net-kind">{label.kind}</span>
           </span>
           <form className="search" onSubmit={(e) => { e.preventDefault(); if (q.trim()) { router.push(`/buy/${q.trim().toUpperCase()}`); setQ(""); } }}>
             <span className="muted"><Ic.search /></span>
@@ -113,8 +119,24 @@ export function AppShell({ children }: { children: ReactNode }) {
           })}
         </nav>
 
+        {label.mocked.length > 0 && (
+          <div className="mock-banner" role="note">
+            <span className="tag net-kind">Mock data</span>
+            <span>
+              <b>Test network.</b> Mocked here: {label.mocked.join(", ")}. Nothing on this screen is a real market.
+            </span>
+          </div>
+        )}
+
         <main className="app-main">{children}</main>
+
+        <footer className="app-foot">
+          <span>Parallax on Robinhood Chain</span>
+          <span>{ELIGIBILITY_NOTICE}</span>
+        </footer>
       </div>
+
+      {confirmed === false && <EligibilityDialog onConfirm={confirm} />}
     </div>
   );
 }

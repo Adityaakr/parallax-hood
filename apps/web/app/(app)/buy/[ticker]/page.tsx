@@ -4,8 +4,8 @@ import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import { useApi, useApiPost, type ResolveResponse, type Stock, type StocksResponse, type Health, type WalletView, type SellResponse } from "@/lib/api";
 import { useDepth } from "@/lib/depth";
-import { fmt, usd, bps, hours, dt } from "@/lib/format";
-import { Loading, ErrorState, Banner, PlatformTag, AttestationDot, Dot, Tag, A } from "@/components/ui";
+import { fmt, fmtUsdg, usd, bps, dt, compactUsd, usdgNumber, venueName, platformName } from "@/lib/format";
+import { Loading, ErrorState, Banner, PlatformTag, Tag, A } from "@/components/ui";
 import { TxButton } from "@/components/TxButton";
 import { DepthChart } from "@/components/app/DepthChart";
 import { Ic } from "@/components/app/icons";
@@ -14,11 +14,9 @@ import { AddressLink } from "@/components/app/AddressLink";
 import { TokenMark } from "@/components/app/TokenMark";
 import { PriceChart } from "@/components/app/PriceChart";
 
-/* No attestation age here on purpose: unset means "whatever the registry enforces", which is the only number
-   that can actually block a trade. Typing one in the policy editor tightens it. */
-const DEFAULT_POLICY = { maxPremiumBps: 150, maxClosedMarketPremiumBps: 150, maxSlippageBps: 50, maxAttestationAgeHours: "" as number | "", allowClosedMarket: true };
-/** Drop the fields left blank, so the resolver applies the registry's own limit rather than an empty one. */
-const sent = (p: typeof DEFAULT_POLICY) => Object.fromEntries(Object.entries(p).filter(([, v]) => v !== "" && v !== undefined)) as Record<string, unknown>;
+/* The buyer's own limits, sent with every quote. The registry's limits apply on top and cannot be loosened here. */
+const DEFAULT_POLICY = { maxPremiumBps: 150, maxClosedMarketPremiumBps: 150, maxSlippageBps: 50, allowClosedMarket: true };
+const sent = (p: typeof DEFAULT_POLICY) => ({ ...p }) as Record<string, unknown>;
 const PRESETS = [100, 500, 1000, 1500, 2000];
 
 export default function BuyPage({ params }: { params: Promise<{ ticker: string }> }) {
@@ -36,7 +34,7 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
   const stocks = useApi<StocksResponse>("/stocks");
   const health = useApi<Health>("/health");
   const resolve = useApiPost<{ ticker: string; usdAmount: string; wallet?: string; policy: Record<string, unknown> }, ResolveResponse>("/resolve");
-  /* selling needs what this wallet actually holds of this stock, per issuer */
+  /* selling needs what this wallet actually holds of this stock, per token */
   const wallet = useApi<WalletView>(address ? `/wallet/${address}` : null, { refetchInterval: 30_000 });
   const sell = useApiPost<{ ticker: string; side: "sell"; tokenAmount: string; representation?: string; wallet?: string; policy: Record<string, unknown> }, SellResponse>("/resolve");
   const held = (wallet.data?.holdings ?? []).filter((h) => h.ticker === T);
@@ -69,8 +67,11 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
     return r.candidates.find((c) => c.token.toLowerCase() === tok)?.symbol;
   }, [r]);
   const best = r?.candidates.filter((c) => c.eligible).sort((a, b) => a.premiumBps - b.premiumBps)[0];
-  const freshest = stock.data ? Math.min(...stock.data.representations.map((x) => (Date.now() / 1000 - x.attestedAt) / 3600)) : null;
-  const issuers = stock.data ? Array.from(new Set(stock.data.representations.map((x) => x.platform))) : [];
+  const reps = stock.data?.representations ?? [];
+  const issuers = Array.from(new Set(reps.map((x) => x.platform)));
+  /* USDG in the token's direct Uniswap v3 pools (raw, 6 decimals) and the fee tiers holding it */
+  const poolUsd = reps.reduce((a, x) => a + usdgNumber(x.poolUsdg), 0);
+  const poolTiers = Array.from(new Set(reps.flatMap((x) => x.poolFees ?? []))).sort((a, b) => a - b);
 
   return (
     <div className="grid xl:grid-cols-[minmax(0,1fr)_460px] gap-4 items-start">
@@ -87,7 +88,7 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
                   {(stocks.data?.stocks ?? [{ ticker: T }]).map((s) => <option key={s.ticker} value={s.ticker}>{s.ticker}</option>)}
                 </select>
               </label>
-              <span className="body-sm muted">{stock.data ? `${stock.data.name ? stock.data.name + " · " : ""}${stock.data.representations.length} representations · ${issuers.join(", ")}` : ""}</span>
+              <span className="body-sm muted">{stock.data ? `${stock.data.name ? stock.data.name + " · " : ""}${reps.length === 1 ? "stock token" : `${reps.length} tokens`} · ${issuers.map(platformName).join(", ")}` : ""}</span>
             </div>
             <A href={`/receipts?underlying=${T}`}><span className="chip">Receipts</span></A>
           </div>
@@ -103,7 +104,7 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
                     </span>
                   )}
                   {stock.data && (
-                    <span className="chip"><span className={`dot ${stock.data.market.open ? "dot-good" : "dot-warn"}`} style={{ marginRight: 0 }} />US market {stock.data.market.open ? "open" : "closed"}{!stock.data.market.open && stock.data.market.nextOpenTime ? ` · opens ${dt(stock.data.market.nextOpenTime)}` : ""}</span>
+                    <span className="chip"><span className={`dot ${stock.data.market.open ? "dot-good" : "dot-warn"}`} style={{ marginRight: 0 }} />Market {stock.data.market.open ? "open" : "closed"}{!stock.data.market.open && stock.data.market.nextOpenTime ? ` · opens ${dt(stock.data.market.nextOpenTime)}` : ""}</span>
                   )}
                   <span className="muted">reference · {stock.data?.referenceSource ?? "…"}</span>
                 </div>
@@ -120,22 +121,22 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
             ) : depth.points.length < 2 ? (
               <div className="flex flex-col gap-3 py-8">
                 <Loading rows={5} />
-                <div className="body-xs muted">{depth.error ? depth.error.message : "Quoting every representation at six order sizes…"}</div>
+                <div className="body-xs muted">{depth.error ? depth.error.message : "Quoting six order sizes…"}</div>
               </div>
             ) : (
               <DepthChart points={depth.points} metric={metric} chosen={chosenSymbol} />
             )}
             <div className="body-xs muted">
               {metric === "price"
-                ? "What one share of the underlying has done, from whichever source reaches back: a Chainlink feed on BSC, or the stock's own daily closes."
-                : `Cost per share of each representation as the order size grows, quoted live through the resolver. The dashed orange line is the reference price.${stock.data?.dataSource === "fixture" ? " Binance API not connected: onchain data live, Binance fields from fixtures." : ""}`}
+                ? "What one share of the underlying has done, from the stock's Chainlink feed where the network has one. The feeds update 24 hours a day, 5 days a week, and stop over the weekend."
+                : `Cost per underlying share as the order size grows, quoted through the resolver. The dashed orange line is the reference price.${stock.data?.dataSource === "fixture" ? " On this network the token, the venue and the reference price are mocks." : ""}`}
             </div>
           </div>
         </section>
 
         <section className="panel">
           <div className="panel-head">
-            <span>Route candidates{r ? ` · $${Number(amount).toLocaleString()} USDT` : ""}</span>
+            <span>Route candidates{r ? ` · $${Number(amount).toLocaleString()} USDG` : ""}</span>
             <A href={r ? `/receipts?quote=${r.quoteHash}` : "/receipts"}><span className="chip">Scoring record</span></A>
           </div>
           <ErrorState error={resolve.error} retry={() => resolve.mutate({ ticker: T, usdAmount: amount, wallet: address, policy: sent(policy) })} />
@@ -144,7 +145,7 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
             <div className="overflow-x-auto">
               <table className="grid">
                 <thead>
-                  <tr><th>Representation</th><th>Ratio</th><th>Venue</th><th>Shares out</th><th>Cost / share</th><th>Premium</th><th>Slippage</th><th>Attestation</th><th>Status</th></tr>
+                  <tr><th>Token</th><th>Shares / token</th><th>Venue</th><th>Shares out</th><th>Cost / share</th><th>Premium</th><th>Slippage</th><th>Status</th></tr>
                 </thead>
                 <tbody>
                   {r.candidates.map((c) => {
@@ -152,13 +153,12 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
                     return (
                       <tr key={c.token} className={chosen ? "chosen" : ""}>
                         <td><span className="flex items-center gap-2"><StockLogo ticker={T} src={stock.data?.logoUrl} size={20} /><span className="font-medium">{c.symbol}</span> <PlatformTag platform={c.platform} />{chosen && <Tag>chosen</Tag>}</span></td>
-                        <td className="num">{fmt(c.ratio, 18, 6)} <span className="body-xs muted">{c.ratioSource === "ERC8056" ? "onchain" : "keeper"}</span></td>
-                        <td className="num body-sm">{c.venue}</td>
+                        <td className="num">{fmt(c.ratio, 18, 6)} <span className="body-xs muted">{c.ratioSource === "ERC8056" ? "on-chain multiplier" : "posted ratio"}</span></td>
+                        <td className="num body-sm whitespace-nowrap" title={c.venue}>{venueName(c.venue)}</td>
                         <td className="num">{c.sharesOut === "0" ? "n/a" : fmt(c.sharesOut, 18, 6)}</td>
                         <td className="num">{c.costPerShareUsd === "0" ? "n/a" : usd(c.costPerShareUsd, 4)}</td>
                         <td className="num whitespace-nowrap"><span className="inline-flex items-center gap-1">{c.costPerShareUsd !== "0" && (c.premiumBps <= 0 ? <Ic.up width={14} height={14} style={{ color: "var(--good)" }} /> : <Ic.down width={14} height={14} style={{ color: "var(--bad)" }} />)}{c.costPerShareUsd === "0" ? "n/a" : bps(c.premiumBps)}</span>{c.pricePremiumBps !== undefined && c.costPerShareUsd !== "0" && <div className="body-xs muted">{bps(c.pricePremiumBps)} ex-gas</div>}</td>
                         <td className="num">{c.costPerShareUsd === "0" ? "n/a" : bps(c.slippageBps)}</td>
-                        <td><AttestationDot hours={c.attestationAgeHours} />{hours(c.attestationAgeHours)}</td>
                         <td className="body-sm">
                           {c.eligible ? (
                             <span className="tag tag-blue">{chosen ? (r.chosen!.split.length > 1 ? `chosen · ${r.chosen!.split.find((s) => s.token.toLowerCase() === c.token.toLowerCase())!.bps / 100}%` : "chosen") : "eligible"}</span>
@@ -196,10 +196,10 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
           <div className="stat-grid">
             <div className="stat"><div className="stat-label"><Ic.up />Reference</div><div className="stat-value">{stock.data?.referencePrice ? usd(stock.data.referencePrice) : "…"}</div><div className="stat-sub">{stock.data?.referenceSource ?? "source"}</div></div>
             <div className="stat"><div className="stat-label"><Ic.clock />Market</div><div className="stat-value">{stock.data ? (stock.data.market.open ? "Open" : "Closed") : "…"}</div><div className="stat-sub">{stock.data ? `status via ${stock.data.market.source}` : ""}</div></div>
-            <div className="stat"><div className="stat-label"><Ic.layers />Representations</div><div className="stat-value">{stock.data?.representations.length ?? "…"}</div><div className="stat-sub">{issuers.map((p) => (p === "bstock" ? "bStocks" : p === "ondo" ? "Ondo" : p)).join(" · ") || "issuers"}</div></div>
+            <div className="stat"><div className="stat-label"><Ic.layers />Shares per token</div><div className="stat-value">{reps.length === 1 ? fmt(reps[0]!.ratio, 18, 6) : stock.data ? `${reps.length} tokens` : "…"}</div><div className="stat-sub">{reps.length === 1 ? (reps[0]!.ratioSource === "ERC8056" ? "the token's on-chain multiplier" : "posted ratio") : issuers.map(platformName).join(" · ")}</div></div>
             <div className="stat"><div className="stat-label"><Ic.target />Best route</div><div className="stat-value">{best ? best.symbol : r ? "none" : "…"}</div><div className="stat-sub">{best ? `${bps(best.premiumBps)} incl. gas` : "under this policy"}</div></div>
-            <div className="stat"><div className="stat-label"><Ic.shield />Attestation</div><div className="stat-value">{freshest !== null && isFinite(freshest) ? `${freshest.toFixed(1)}h` : "…"}</div><div className="stat-sub">freshest report age</div></div>
-            <div className="stat"><div className="stat-label"><Ic.chart />Venue</div><div className="stat-value" style={{ fontSize: 20 }}>{best ? best.venue : "…"}</div><div className="stat-sub">executable quote</div></div>
+            <div className="stat"><div className="stat-label"><Ic.shield />Pool depth</div><div className="stat-value">{!stock.data ? "…" : poolUsd > 0 ? compactUsd(poolUsd) : "n/a"}</div><div className="stat-sub">{poolTiers.length ? `USDG in direct Uniswap v3 pools, ${poolTiers.map((f) => `${f / 10_000}%`).join(" and ")}` : "no direct Uniswap v3 pool on this network"}</div></div>
+            <div className="stat"><div className="stat-label"><Ic.chart />Venue</div><div className="stat-value" style={{ fontSize: 20 }}>{best ? venueName(best.venue) : "…"}</div><div className="stat-sub">where this order would fill</div></div>
           </div>
         </section>
 
@@ -216,8 +216,8 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
             {side === "buy" ? (
               <>
             <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between body-md"><span>You pay</span><span className="chip"><TokenMark symbol="USDT" size={18} />USDT<Ic.chevron width={14} height={14} /></span></div>
-              <input className="big-num w-full bg-transparent outline-none" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" aria-label="Amount in USDT" />
+              <div className="flex items-center justify-between body-md"><span>You pay</span><span className="chip"><TokenMark symbol="USDG" size={18} />USDG<Ic.chevron width={14} height={14} /></span></div>
+              <input className="big-num w-full bg-transparent outline-none" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" aria-label="Amount in USDG" />
               <div className="flex flex-wrap gap-2">
                 {PRESETS.map((p) => <button key={p} className="preset" data-on={Number(amount) === p} onClick={() => setAmount(String(p))}>${p.toLocaleString()}</button>)}
               </div>
@@ -226,33 +226,33 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
             <div className="flex flex-col gap-3 pt-2">
               <div className="flex items-center justify-between body-md"><span>You receive</span><span className="chip"><StockLogo ticker={T} src={stock.data?.logoUrl} size={16} />{T} shares<Ic.chevron width={14} height={14} /></span></div>
               <div className="big-num">{r?.chosen ? `${fmt(r.chosen.sharesOut, 18, 4)} ${T}` : resolve.isPending ? <span className="skeleton inline-block w-40 h-8" /> : "n/a"}</div>
-              <div className="body-sm muted">{r?.chosen ? `via ${chosenSymbol}${r.chosen.split.length > 1 ? ` + ${r.chosen.split.length - 1} more` : ""} · min ${fmt(r.chosen.minShares, 18, 4)} shares enforced onchain` : r?.status === "no_route" ? "No eligible route under this policy." : ""}</div>
+              <div className="body-sm muted">{r?.chosen ? `via ${chosenSymbol}${r.chosen.split.length > 1 ? ` + ${r.chosen.split.length - 1} more` : ""} · min ${fmt(r.chosen.minShares, 18, 4)} shares enforced on chain` : r?.status === "no_route" ? "No eligible route under this policy." : ""}</div>
             </div>
             <div className="rounded-2xl border line">
-              <div className="fee-row"><span className="muted">Protocol fee{r?.fee ? ` ${(r.fee.bps / 100).toFixed(2)}%` : ""}</span><span className="num">{r?.fee ? `${fmt(r.fee.usdt, 18, 2)} USDT` : "…"}</span></div>
-              <div className="fee-row"><span className="muted">Total USDT incl. fee</span><span className="num">{r?.fee?.totalUsdtIn ? fmt(r.fee.totalUsdtIn, 18, 2) : "…"}</span></div>
+              <div className="fee-row"><span className="muted">Protocol fee{r?.fee ? ` ${(r.fee.bps / 100).toFixed(2)}%` : ""}</span><span className="num">{r?.fee ? `${fmtUsdg(r.fee.usdg)} USDG` : "…"}</span></div>
+              <div className="fee-row"><span className="muted">Total USDG incl. fee</span><span className="num">{r?.fee?.totalUsdgIn ? fmtUsdg(r.fee.totalUsdgIn) : "…"}</span></div>
               <div className="fee-row"><span className="muted">Gas estimate</span><span className="num">{r ? usd(r.gasUsd, 3) : "…"}</span></div>
               <div className="fee-row"><span className="muted">Premium incl. gas</span><span className="num">{best ? bps(best.premiumBps) : "…"}</span></div>
               <div className="fee-row"><span className="muted">Slippage</span><span className="num">{best ? bps(best.slippageBps) : "…"}</span></div>
-              <div className="fee-row"><span className="muted">Simulation</span><span className="num">{r?.simulation ? (r.simulation.ok ? `ok${r.approvalNeeded ? " · approval first" : ""}` : "failed") : "…"}</span></div>
+              <div className="fee-row"><span className="muted">Simulation</span><span className="num">{r?.simulation ? (r.simulation.ok ? `ok${r.approvalNeeded ? " · approval first" : ""}` : "failed") : r ? (r.executable === false ? "quote only" : "runs once a wallet is connected") : "…"}</span></div>
             </div>
             {r?.executable === false && (
               <Banner kind="warn">
-                <b>Quote only on this network.</b> Prices, ratios and routes are live from mainnet, but Parallax&apos;s contracts are not deployed here yet, so there is nothing to sign. Deploying the router costs about $1.
+                <b>Quote only on this network.</b> Prices, multipliers and routes are read from the chain, but Parallax&apos;s contracts are not deployed here, so there is nothing to sign.
               </Banner>
             )}
             {r?.status === "queued_until_open" && <Banner kind="warn">Market closed: order is queued until open{r.nextOpenTime ? ` (${dt(r.nextOpenTime)})` : ""}. Allow closed-market execution in the policy to trade now within {policy.maxClosedMarketPremiumBps} bps.</Banner>}
             {r?.simulation && !r.simulation.ok && <Banner kind="bad">Simulation failed: {r.simulation.error}</Banner>}
             <div className="flex items-center gap-4">
               <div className="flex-1">
-                <TxButton tx={r?.status === "ok" && r.executable !== false ? r.tx : null} label={`Buy ${T}`} className="btn btn-primary btn-lg w-full" approval={health.data && r ? { token: health.data.deployment.usdt, spender: r.router, amount: BigInt(r.fee?.totalUsdtIn ?? r.chosen?.usdtIn ?? "0") } : undefined} disabled={!r?.tx} />
+                <TxButton tx={r?.status === "ok" && r.executable !== false ? r.tx : null} label={`Buy ${T}`} className="btn btn-primary btn-lg w-full" approval={health.data && r ? { token: health.data.deployment.usdg, spender: r.router, amount: BigInt(r.fee?.totalUsdgIn ?? r.chosen?.usdgIn ?? "0") } : undefined} disabled={!r?.tx} />
               </div>
               <button className="body-md muted whitespace-nowrap hover:opacity-70" onClick={() => setShowPolicy(!showPolicy)}>{showPolicy ? "Hide policy" : "Set policy"}</button>
             </div>
               </>
             ) : (
               <>
-            {/* Sell: the exit. Any registered token can always be sold, even a stale or deprecated one. */}
+            {/* Sell: the exit. Any registered token can always be sold, whatever the state of its reference price. */}
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between body-md">
                 <span>You sell</span>
@@ -262,7 +262,7 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
               <div className="flex items-center justify-between gap-3">
                 <span className="body-sm muted inline-flex items-center gap-[6px]">
                   <Ic.wallet width={15} height={15} />
-                  {address ? <><span className="num">{heldTokens.toFixed(4)}</span> held across {held.length || 0} issuer{held.length === 1 ? "" : "s"}</> : "connect a wallet to see your holding"}
+                  {address ? <><span className="num">{heldTokens.toFixed(4)}</span> {held.length > 1 ? `held across ${held.length} tokens` : "held"}</> : "connect a wallet to see your holding"}
                 </span>
                 <span className="flex gap-2">
                   {([["25%", 0.25], ["50%", 0.5], ["Max", 1]] as const).map(([label, f]) => (
@@ -273,14 +273,14 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
             </div>
             <div className="relative h-px" style={{ background: "var(--line-2)" }}><span className="swap-orb absolute left-1/2 -translate-x-1/2 -translate-y-1/2"><Ic.swap width={18} height={18} /></span></div>
             <div className="flex flex-col gap-3 pt-2">
-              <div className="flex items-center justify-between body-md"><span>You receive</span><span className="chip"><TokenMark symbol="USDT" size={16} />USDT</span></div>
-              <div className="big-num">{sq?.chosen ? `${fmt(sq.chosen.usdtOut, 18, 2)} USDT` : sell.isPending ? <span className="skeleton inline-block w-40 h-8" /> : "n/a"}</div>
+              <div className="flex items-center justify-between body-md"><span>You receive</span><span className="chip"><TokenMark symbol="USDG" size={16} />USDG</span></div>
+              <div className="big-num">{sq?.chosen ? `${fmtUsdg(sq.chosen.usdgOut)} USDG` : sell.isPending ? <span className="skeleton inline-block w-40 h-8" /> : "n/a"}</div>
               <div className="body-sm muted">
                 {sq?.chosen
-                  ? <>{sq.chosen.why} · at least <span className="num">{fmt(sq.chosen.minUsdtOut, 18, 2)}</span> USDT enforced onchain, net of the fee.</>
+                  ? <>{sq.chosen.why} · at least <span className="num">{fmtUsdg(sq.chosen.minUsdgOut)}</span> USDG enforced on chain, net of the fee.</>
                   : sq?.status === "no_route"
-                    ? "No representation of this stock has contract-executable liquidity to sell into right now."
-                    : "An exit never depends on fresh data: any registered token can be sold, even a paused or stale one."}
+                    ? "There is no liquidity a contract can sell this token into right now."
+                    : "An exit never depends on a fresh reference price: any registered token can be sold."}
               </div>
             </div>
             {sq && (
@@ -288,11 +288,11 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
                 {sq.candidates.map((c) => (
                   <div key={c.token} className="fee-row">
                     <span className="muted flex items-center gap-2">{c.symbol} <PlatformTag platform={c.platform} />{!c.eligible && <span className="body-xs">{c.reasons[0]}</span>}</span>
-                    <span className="num">{c.eligible ? `${fmt(c.usdtOut, 18, 2)} USDT · ${bps(c.premiumBps)}` : "no route"}</span>
+                    <span className="num">{c.eligible ? `${fmtUsdg(c.usdgOut)} USDG · ${bps(c.premiumBps)}` : "no route"}</span>
                   </div>
                 ))}
-                <div className="fee-row"><span className="muted">Protocol fee{sq.fee ? ` ${(sq.fee.bps / 100).toFixed(2)}%` : ""}</span><span className="num">{sq.fee ? `${fmt(sq.fee.usdt, 18, 2)} USDT` : "…"}</span></div>
-                <div className="fee-row"><span className="muted">Simulation</span><span className="num">{sq.simulation ? (sq.simulation.ok ? "ok" : "failed") : "…"}</span></div>
+                <div className="fee-row"><span className="muted">Protocol fee{sq.fee ? ` ${(sq.fee.bps / 100).toFixed(2)}%` : ""}</span><span className="num">{sq.fee ? `${fmtUsdg(sq.fee.usdg)} USDG` : "…"}</span></div>
+                <div className="fee-row"><span className="muted">Simulation</span><span className="num">{sq.simulation ? (sq.simulation.ok ? "ok" : "failed") : sq.executable === false ? "quote only" : "runs once a wallet is connected"}</span></div>
               </div>
             )}
             <ErrorState error={sell.error} />
@@ -302,6 +302,7 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
               label={`Sell ${sellTokens || "0"} ${T}`}
               className="btn btn-primary btn-lg w-full"
               approval={sq?.chosen ? { token: sq.chosen.representation, spender: sq.router, amount: BigInt(sq.chosen.tokenAmount) } : undefined}
+              approvalSymbol={T}
               disabled={!sq?.tx}
               onSent={() => { wallet.refetch(); sell.reset(); setSellTokens(""); }}
             />
@@ -309,7 +310,7 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
             )}
             {showPolicy && (
               <div className="grid grid-cols-2 gap-3 pt-2 border-t line">
-                {([["maxPremiumBps", "Max premium (open), bps"], ["maxClosedMarketPremiumBps", "Max premium (closed), bps"], ["maxSlippageBps", "Max slippage, bps"], ["maxAttestationAgeHours", "Max attestation age, h (blank: the registry\u2019s)"]] as const).map(([k, label]) => (
+                {([["maxPremiumBps", "Max premium (open), bps"], ["maxClosedMarketPremiumBps", "Max premium (closed), bps"], ["maxSlippageBps", "Max slippage, bps"]] as const).map(([k, label]) => (
                   <label key={k} className="block"><span className="body-xs muted">{label}</span><input className="input mt-1" type="number" value={policy[k]} onChange={(e) => setPolicy({ ...policy, [k]: Number(e.target.value) })} /></label>
                 ))}
                 <label className="col-span-2 flex items-center gap-2 body-sm"><input type="checkbox" checked={policy.allowClosedMarket} onChange={(e) => setPolicy({ ...policy, allowClosedMarket: e.target.checked })} /> allow closed-market execution</label>
@@ -320,7 +321,7 @@ export default function BuyPage({ params }: { params: Promise<{ ticker: string }
 
         {stock.data && (
           <div className="body-xs muted px-1 flex flex-wrap items-center gap-x-4 gap-y-2">
-            <span className="font-medium">Registry</span>
+            <span className="font-medium">Token contract</span>
             {stock.data.representations.map((x) => (
               <span key={x.token} className="inline-flex items-center gap-[6px]">
                 <StockLogo ticker={T} src={stock.data?.logoUrl} size={14} />{x.symbol}

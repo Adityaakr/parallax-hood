@@ -1,62 +1,88 @@
 import { A } from "@/components/ui";
 import { Page, PageHead } from "@/components/Page";
-import { FragmentationTable } from "@/components/app/frames";
+
+const PARTS: [string, string][] = [
+  [
+    "Routing in shares",
+    "A Robinhood stock token is an ERC-20 whose multiplier, read on chain (ERC-8056 uiMultiplier), says how many underlying shares one token stands for. Parallax multiplies tokens by that multiplier and quotes, compares and protects every order in shares. A buy reverts unless the shares received meet the minimum the quote promised.",
+  ],
+  [
+    "Quotes from the chain",
+    "Prices come from the Uniswap v3 pools on Robinhood Chain, read through the quoter: the direct USDG pool at each fee tier, or two hops through WETH. The resolver scores each route by cost per underlying share with fees, price impact and gas included, simulates the transaction, and records why it chose the route under a quote hash that the on-chain receipt carries.",
+  ],
+  [
+    "Index vaults settled in USDG",
+    "An index unit is a fixed number of shares of each constituent, not a dollar amount. Minting pulls USDG, buys every constituent and checks that the vault holds at least the shares its units require. Unspent USDG is returned in the same transaction.",
+  ],
+  [
+    "Redeem in kind",
+    "A holder can always take their pro-rata slice of the tokens the vault holds. This path uses no price, no oracle and no pause switch that Parallax controls, and it carries no protocol fee.",
+  ],
+  [
+    "Agent mandate",
+    "A wallet owner can let an agent key trade inside limits the contract enforces: a per-transaction cap and a daily cap in USDG, an expiry, an allowlist of stocks and indices, and a floor on the price it may accept. Whatever the agent buys goes to the owner, never to the agent, and the owner can revoke at any time.",
+  ],
+];
+
+const TRUSTED: [string, string][] = [
+  ["The admin key", "One key registers tokens and swap targets, sets the fee and the supply caps, and can pause new buys. It cannot pause selling or redeeming in kind, and it cannot move anyone's assets. A production deployment would put it behind a multisig and a timelock."],
+  ["Robinhood, as issuer", "Robinhood can pause a stock token, block an address, burn tokens and upgrade the token contracts. A paused or blocked token cannot leave a vault until the issuer lifts it; the other constituents and the rest of an in-kind redemption are not affected."],
+  ["Paxos, as issuer of USDG", "Paxos can pause USDG and freeze an address. Parallax takes USDG at one dollar."],
+  ["Chainlink feeds", "Reference prices come from Chainlink feeds that update 24 hours a day, 5 days a week, from Sunday 20:00 to Friday 20:00 New York time. They stop over the weekend. A stale reference price blocks agent buys only, never an owner's own trade or an exit."],
+  ["The resolver", "The resolver is an off-chain service that proposes routes. The contracts do not trust it: swap targets are allowlisted, results are measured by balance changes, and the share minimum is checked on chain."],
+];
 
 function AboutInner() {
   return (
     <div className="prose-sm max-w-4xl mx-auto space-y-8">
       <section>
-        <PageHead eyebrow="In detail" title="How Parallax works" />
+        <PageHead eyebrow="In detail" title="How Parallax works on Robinhood Chain" />
         <p className="muted mt-6 leading-relaxed">
-          Tokenized stocks on BNB Chain are fragmented. The same company exists as several tokens from different issuers, with different contracts, token-to-share ratios, liquidity, attestation reports, prices and behavior when the US market is closed. A user or an agent who wants &ldquo;$500 of NVDA&rdquo; should not have to understand any of this. An index that wants &ldquo;0.10 NVDA shares per unit&rdquo; should not care which token supplies them.
+          Parallax buys Robinhood stock tokens with USDG on Robinhood Chain, measures every fill in underlying
+          shares, packages positions into index vaults whose unit is a fixed number of shares, and lets a wallet
+          owner delegate to an agent through a contract the agent cannot exceed.
         </p>
       </section>
 
-      <section>
-        <div className="eyebrow mb-3">The fragmentation problem, in one table</div>
-        <FragmentationTable />
-      </section>
-
-      <section className="grid md:grid-cols-3 gap-4">
-        <div className="card p-4">
-          <div className="font-medium">1 · Resolver</div>
-          <p className="muted text-sm mt-1">
-            Finds every representation on BSC, normalizes to shares with each token&apos;s ratio, pulls executable quotes (PancakeSwap v3 quoter; Binance aggregator for comparison), checks attestation freshness and market state, scores effective cost per share, applies your policy and returns a ranked explanation plus an unsigned, pre-simulated transaction.
-          </p>
-        </div>
-        <div className="card p-4">
-          <div className="font-medium">2 · ShareRouter &amp; baskets</div>
-          <p className="muted text-sm mt-1">
-            Executes routes with slippage protection in shares, not token units, only into allowlisted, attestation-fresh representations, and emits a receipt linking to the scoring record. Baskets define a unit as fixed shares per stock; mint, redeem, redeem in kind and permissionless migration are all invariant-checked.
-          </p>
-        </div>
-        <div className="card p-4">
-          <div className="font-medium">3 · Agent mandates</div>
-          <p className="muted text-sm mt-1">
-            A wallet owner authorizes an agent key within hard limits enforced onchain: per-tx cap, daily cap, expiry, allowed stocks and baskets. Outputs go to the owner. Revocation is instant. The MCP server adds soft policy on top and can only act through this contract.
-          </p>
-        </div>
+      <section className="grid md:grid-cols-2 gap-4">
+        {PARTS.map(([title, text], i) => (
+          <div key={title} className="card p-4">
+            <div className="font-medium">{i + 1} · {title}</div>
+            <p className="muted text-sm mt-1 leading-relaxed">{text}</p>
+          </div>
+        ))}
       </section>
 
       <section>
-        <h2 className="text-lg font-medium">Invariants, in plain words</h2>
+        <h2 className="text-lg font-medium">What is trusted</h2>
         <ul className="mt-2 space-y-2 text-sm">
-          <li><b>Backing.</b> For every stock in a basket, the vault holds at least (units outstanding × shares per unit) shares, counted across every issuer&apos;s token at its current ratio. Checked after every mint and migration. Redeems only remove your pro-rata slice.</li>
-          <li><b>Redeem in kind always works.</b> No pause, no oracle, no stale keeper data can stop a holder from taking their pro-rata tokens out. If an issuer freezes one token, you can skip that slice and take everything else.</li>
-          <li><b>Migrate is monotone.</b> Anyone can swap a constituent from one issuer&apos;s token to another, but only if the share count strictly rises, nothing else falls, and issuer caps hold. Anyone can improve the basket; nobody can hurt it.</li>
-          <li><b>Share-denominated slippage.</b> A buy reverts unless the shares received (tokens × ratio) meet the minimum, so a token with a different ratio cannot masquerade as a better fill.</li>
-          <li><b>Legs trust balance deltas only.</b> Swap calldata is untrusted: targets are allowlisted, approvals are per-leg and reset to zero, results are measured by balance changes.</li>
-          <li><b>Agents never receive assets.</b> Recipient is hardcoded to the owner; caps and expiry are enforced onchain; the owner can revoke instantly.</li>
-          <li><b>The keeper is bounded.</b> A posted ratio can move at most 5% per post; a bigger jump (a split) pauses buys for that token until the admin confirms. Stale data blocks buys, never exits.</li>
+          {TRUSTED.map(([who, what]) => (
+            <li key={who}><b>{who}.</b> <span className="muted">{what}</span></li>
+          ))}
         </ul>
       </section>
 
+      <section className="text-sm">
+        <h2 className="text-lg font-medium">Limits at launch</h2>
+        <ul className="mt-2 space-y-2">
+          <li><b>Unaudited.</b> <span className="muted">The contracts have tests, fuzzing and invariant suites, and no external audit.</span></li>
+          <li><b>Supply caps.</b> <span className="muted">Each index vault starts with a cap on the units it can mint, set by the admin. The cap is checked on mint only, so it never blocks a redemption.</span></li>
+          <li><b>Test networks use mocks.</b> <span className="muted">On the testnet and on local chains the stock tokens, USDG and the swap venue are mocks, and the banner at the top of every page says so.</span></li>
+        </ul>
+      </section>
 
       <section className="text-sm">
-        <h2 className="text-lg font-medium">Disclaimers</h2>
-        <p className="muted mt-2">Not investment advice. Tokenized stock availability depends on your jurisdiction and each issuer&apos;s terms; you are responsible for your eligibility. Parallax does not geolocate users. Basket tokens are vault receipts, not an investment product or a token launch.</p>
+        <h2 className="text-lg font-medium">Eligibility</h2>
+        <p className="muted mt-2 leading-relaxed">
+          Robinhood Stock Tokens are not registered under U.S. securities laws and may not be offered or sold in
+          the United States or to U.S. persons. They are also restricted in other jurisdictions. See Robinhood&apos;s
+          terms for <A href="https://docs.robinhood.com/chain/stock-tokens">stock tokens</A> and its list of{" "}
+          <A href="https://docs.robinhood.com/rhj/restricted-jurisdictions">restricted jurisdictions</A>. Parallax
+          does not geolocate users; you are responsible for your eligibility. Not investment advice. Index tokens
+          are vault receipts, not an investment product.
+        </p>
         <p className="muted mt-2">
-          Source, tests, threat model and the full recon of every token contract: <A href="https://github.com/Adityaakr/parallax">github.com/Adityaakr/parallax</A>.
+          Source, tests, the threat model and the on-chain check behind every address: <A href="https://github.com/Adityaakr/parallax-hood">github.com/Adityaakr/parallax-hood</A>.
         </p>
       </section>
     </div>

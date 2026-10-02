@@ -1,8 +1,8 @@
 "use client";
-/* Pieces shared by the index list and index detail: return figures, the period switch, the allocation donut,
+/* Pieces shared by the index list and index detail: return figures, the period switch, the allocation ring,
    sparklines and the constituent logo cluster. Everything is drawn from resolver data; nothing here estimates. */
 import { useId, useState } from "react";
-import type { Allocation, BasketPerformance, Fundamentals, Period } from "@/lib/api";
+import type { Allocation, BasketPerformance, Period } from "@/lib/api";
 import { StockLogo } from "./StockLogo";
 
 export const PERIOD_LABELS: Record<Period, string> = { d1: "1D", d7: "7D", m1: "1M", m6: "6M", y1: "1Y" };
@@ -36,9 +36,8 @@ export function CoverageNote({ perf, period }: { perf: BasketPerformance; period
   if (perf.covered === 0) {
     return (
       <span className="body-xs muted">
-        No price history for any of the {perf.total} constituents: no Chainlink feed on BSC, no daily closes for the
-        underlying, and no PancakeSwap pool whose oracle keeps past prices. Today&apos;s NAV and the 52-week ranges
-        below are live.
+        No price history for any of the {perf.total} constituents on this network, so no return can be computed.
+        The NAV per unit is today&apos;s reference prices.
       </span>
     );
   }
@@ -46,13 +45,13 @@ export function CoverageNote({ perf, period }: { perf: BasketPerformance; period
   if (cov === 0) {
     return (
       <span className="body-xs muted">
-        No source reaches back this far for any constituent: the newly listed ones have no year to look at.
+        No price source reaches back this far for any constituent.
       </span>
     );
   }
   return (
     <span className="body-xs muted">
-      Covers {(cov / 100).toFixed(0)}% of NAV: the rest listed too recently to have this much history
+      Covers {(cov / 100).toFixed(0)}% of NAV: the rest has no price history this far back
       {perf.unpriced.length > 0 ? `, and there is none at all for ${perf.unpriced.join(", ")}` : ""}. {perf.source}.
     </span>
   );
@@ -88,27 +87,11 @@ export function Sparkline({ points, width = 120, height = 36, color }: { points:
   );
 }
 
-/** Where today's price sits in the last year's range, from Binance's own high/low for the underlying. */
-export function Band52w({ f, price }: { f: Fundamentals | null; price: string | null }) {
-  const now = price === null ? null : Number(price);
-  if (!f || f.low52W === null || f.high52W === null || f.high52W <= f.low52W) return null;
-  const at = now === null ? null : Math.min(1, Math.max(0, (now - f.low52W) / (f.high52W - f.low52W)));
-  return (
-    <span className="inline-flex items-center gap-2 body-xs muted whitespace-nowrap" title={`52-week range $${f.low52W.toFixed(2)} – $${f.high52W.toFixed(2)}`}>
-      <span className="num">{f.low52W.toFixed(0)}</span>
-      <span className="relative inline-block rounded-full" style={{ width: 54, height: 4, background: "var(--line-2)" }}>
-        {at !== null && <span className="absolute rounded-full" style={{ left: `calc(${(at * 100).toFixed(1)}% - 3px)`, top: -2, width: 6, height: 8, background: "var(--brand)" }} />}
-      </span>
-      <span className="num">{f.high52W.toFixed(0)}</span>
-    </span>
-  );
-}
-
 /**
- * Allocation donut with a legend. Hovering either side lights the same slice; the centre shows the hovered
+ * Allocation ring with a legend. Hovering either side lights the same slice; the centre shows the hovered
  * constituent or the total when nothing is.
  */
-export function AllocationDonut({ allocation, size = 220, center }: { allocation: Allocation[]; size?: number; center: { value: string; label: string } }) {
+export function AllocationRing({ allocation, size = 220, center }: { allocation: Allocation[]; size?: number; center: { value: string; label: string } }) {
   const [hover, setHover] = useState<number | null>(null);
   const id = useId();
   const r = size / 2 - 14, cx = size / 2, cy = size / 2, C = 2 * Math.PI * r;

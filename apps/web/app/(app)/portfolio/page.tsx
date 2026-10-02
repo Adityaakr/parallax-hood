@@ -2,8 +2,8 @@
 /*
  * Portfolio: everything this wallet holds, in the unit the product is denominated in.
  *
- * A stock position is underlying shares, counted across every issuer that represents it, so two tokens of the
- * same company add up instead of sitting in separate rows pretending to be different assets. An index position
+ * A stock position is underlying shares: the tokens held times each token's on-chain multiplier, so two tokens
+ * of the same company would add up instead of sitting in separate rows. An index position
  * is units and what those units are worth at the vault's own NAV. A position the resolver cannot price says so
  * rather than being valued at zero, and the total says how many are in that state.
  */
@@ -25,8 +25,8 @@ export default function PortfolioPage() {
   const w = useApi<WalletView>(address ? `/wallet/${address}` : null, { refetchInterval: 30_000 });
   const d = w.data;
   const total = d ? Number(d.totals.portfolioUsd) : 0;
-  const cash = d ? Number(d.totals.usdtUsd) : 0;
-  /* one row per company, not per issuer: the shares of the same stock are the same claim */
+  const cash = d ? Number(d.totals.usdgUsd) : 0;
+  /* one row per company, not per token: the shares of the same stock are the same claim */
   const byTicker = new Map<string, { ticker: string; logoUrl: string | null; name: string | null; shares: number; valueUsd: number | null; priceUsd: string | null; legs: WalletView["holdings"] }>();
   for (const h of d?.holdings ?? []) {
     const e = byTicker.get(h.ticker) ?? { ticker: h.ticker, logoUrl: h.logoUrl, name: h.name, shares: 0, valueUsd: 0 as number | null, priceUsd: h.priceUsd, legs: [] };
@@ -44,7 +44,7 @@ export default function PortfolioPage() {
       <PageHead
         eyebrow="Portfolio"
         title="What you hold"
-        lede="Stock positions are counted in underlying shares across every issuer that represents them, index positions in units and in what those units are worth at the vault's own NAV. Values are live from the same sources the quotes use."
+        lede="Stock positions are counted in underlying shares, using each token's on-chain multiplier. Index positions are counted in units and in what those units are worth at the vault's own NAV. Values come from the same reference prices the quotes use."
         right={address ? <div className="flex flex-col items-end gap-1"><span className="body-xs muted">Total value</span><span className="metric">{d ? usd(total) : "…"}</span></div> : undefined}
       />
 
@@ -78,10 +78,10 @@ export default function PortfolioPage() {
               <div className="stat">
                 <div className="stat-label"><Ic.chart width={14} height={14} />Single stocks</div>
                 <div className="stat-value">{usd(d.totals.stocksUsd)}</div>
-                <div className="stat-sub">in underlying shares, across issuers</div>
+                <div className="stat-sub">in underlying shares, at reference prices</div>
               </div>
               <div className="stat">
-                <div className="stat-label"><Ic.wallet width={14} height={14} />USDT</div>
+                <div className="stat-label"><Ic.wallet width={14} height={14} />USDG</div>
                 <div className="stat-value">{usd(cash)}</div>
                 <div className="stat-sub">spendable balance, not counted in positions</div>
               </div>
@@ -89,7 +89,7 @@ export default function PortfolioPage() {
           )}
 
           {d && d.totals.unpricedPositions > 0 && (
-            <Banner kind="warn">{d.totals.unpricedPositions} position{d.totals.unpricedPositions === 1 ? " has" : "s have"} no live price source right now, so they are held out of the totals rather than valued at a guess.</Banner>
+            <Banner kind="warn">{d.totals.unpricedPositions} position{d.totals.unpricedPositions === 1 ? " has" : "s have"} no price source right now, so they are held out of the totals rather than valued at a guess.</Banner>
           )}
 
           {empty && (

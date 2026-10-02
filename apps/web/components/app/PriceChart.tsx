@@ -4,8 +4,8 @@
  *
  * The other chart on this page answers "what does a share cost me at this order size"; this one answers "what
  * is the share worth, and what has it done", which is the question anyone opens a stock page with. The source
- * is named because it differs by name: BSC has Chainlink feeds for the Magnificent 7 and nothing else, so
- * everything else is priced from the underlying's daily closes. A ticker no source reaches says so.
+ * is named by the resolver: on Robinhood Chain it is the stock's Chainlink feed, which updates 24 hours a day,
+ * 5 days a week. A network with no history (mocks) says so rather than drawing a line.
  */
 import { useMemo, useState } from "react";
 import { useApi } from "@/lib/api";
@@ -22,7 +22,8 @@ const RANGES: { key: string; label: string; days: number; points: number }[] = [
 ];
 
 export function PriceChart({ ticker }: { ticker: string }) {
-  const [range, setRange] = useState(RANGES[4]!);
+  /* one month by default: the feeds on Robinhood Chain are younger than a year, so the long ranges start empty */
+  const [range, setRange] = useState(RANGES[2]!);
   const h = useApi<History>(`/stocks/${ticker}/history?days=${range.days}&points=${range.points}`, { refetchInterval: 120_000 });
   const pts = useMemo(() => (h.data?.series ?? []).map((p) => ({ t: p.t, v: Number(p.price) / 1e18 })).filter((p) => p.v > 0), [h.data]);
   const ret = h.data?.returns?.[range.key] ?? null;
@@ -56,8 +57,8 @@ export function PriceChart({ ticker }: { ticker: string }) {
         <Loading rows={4} />
       ) : pts.length < 2 ? (
         <div className="body-sm muted py-8">
-          No source reaches back {range.label} for {ticker}. Chainlink covers the Magnificent 7 on BSC; everything
-          else is priced from the underlying&apos;s daily closes, which a name listed this year may not have.
+          No price history reaches back {range.label} for {ticker} on this network. History comes from the
+          stock&apos;s Chainlink feed on Robinhood Chain; a mock network has none.
         </div>
       ) : (
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label={`${ticker} price over ${range.label}`}>

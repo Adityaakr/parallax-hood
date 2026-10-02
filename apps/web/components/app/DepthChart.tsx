@@ -59,7 +59,7 @@ export function DepthChart({ points, metric, chosen }: { points: DepthPoint[]; m
       </svg>
       {hv && (
         <div className="absolute panel px-4 py-3 pointer-events-none" style={{ left: `calc(${(x(hover!) / W) * 100}% + 12px)`, top: 24, minWidth: 210, transform: hover! > points.length / 2 ? "translateX(calc(-100% - 24px))" : undefined }}>
-          <div className="body-xs muted">Order size · ${hv.usd.toLocaleString()} USDT</div>
+          <div className="body-xs muted">Order size · ${hv.usd.toLocaleString()} USDG</div>
           <div className="mt-2 flex flex-col gap-1.5">
             {hv.candidates.map((c) => (
               <div key={c.symbol} className="flex items-center justify-between gap-6 body-sm">

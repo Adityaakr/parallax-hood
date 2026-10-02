@@ -2,6 +2,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { ApiError } from "@/lib/api";
+import { platformName } from "@/lib/format";
 
 export const Dot = ({ kind }: { kind: "good" | "warn" | "bad" | "muted" }) => <span className={`dot dot-${kind}`} />;
 export const Tag = ({ children }: { children: ReactNode }) => <span className="tag">{children}</span>;
@@ -28,8 +29,8 @@ export function ErrorState({ error, retry }: { error: ApiError | Error | null; r
   return (
     <Banner kind={unconfigured ? "warn" : "bad"}>
       <div className="font-medium">{unconfigured ? "No resolver for this network yet" : unreachable ? "Resolver unreachable" : "Request failed"}</div>
-      <div className="muted mt-1 break-words">{unconfigured ? "This network has no resolver deployment configured. Switch to a network that does (sidebar, top-left) or configure NEXT_PUBLIC_RESOLVER_URLS." : error.message}</div>
-      {unreachable && <div className="muted mt-1">Start it with <code className="mono">pnpm --filter @parallax-hood/resolver dev</code> or switch network in the sidebar.</div>}
+      <div className="muted mt-1 break-words">{unconfigured ? "This network has no resolver deployment configured. Set NEXT_PUBLIC_RESOLVER_URL or NEXT_PUBLIC_RESOLVER_URLS." : error.message}</div>
+      {unreachable && <div className="muted mt-1">Start it with <code className="mono">pnpm --filter @parallax-hood/resolver dev</code>.</div>}
       {retry && (
         <button className="btn mt-2" onClick={retry}>
           Retry
@@ -54,21 +55,7 @@ export function Stat({ label, value, sub, mono = true }: { label: string; value:
 }
 
 export function PlatformTag({ platform }: { platform: string }) {
-  return <Tag>{platform === "bstock" ? "bStocks" : platform === "ondo" ? "Ondo" : platform}</Tag>;
-}
-
-export function AttestationDot({ hours }: { hours: number | null }) {
-  const kind = hours === null ? "muted" : hours <= 24 ? "good" : hours <= 36 ? "warn" : "bad";
-  return <Dot kind={kind} />;
-}
-
-export function Disclaimer() {
-  return (
-    <p className="text-xs muted leading-relaxed">
-      Not investment advice. Tokenized stock availability depends on your jurisdiction and each issuer&apos;s terms; you are responsible for your eligibility.
-      Prices, premiums and NAV are informational. Backing is measured in underlying shares, never in USD.
-    </p>
-  );
+  return <Tag>{platformName(platform)}</Tag>;
 }
 
 export const A = ({ href, children }: { href: string; children: ReactNode }) =>

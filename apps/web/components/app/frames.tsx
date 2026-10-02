@@ -1,9 +1,56 @@
 "use client";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import type { BasketDetail, Health, Receipt, ResolveResponse } from "@/lib/api";
+import { DEFAULT_CHAIN, resolverUrlOrNull } from "@/lib/config";
+import { fmt, fmtUsdg, usd, bps, short, venueName, platformName } from "@/lib/format";
 
-/* Product frames used on the landing page. Built in React (not images) so they are crisp at any size, follow the
-   theme, and show the product's real surfaces. Every number is from the mainnet-fork run of 17 Sep 2026
-   (docs/recon.md, docs/decisions.md) and is labeled as such where it appears. */
+/* Product frames used on the landing page. Built in React (not images) so they are crisp at any size and show
+   the product's real surfaces. Nothing in them is written by hand: every figure is read from the resolver when
+   the frame mounts, the frame names the network it came from, and a frame whose resolver does not answer says
+   so and shows no numbers. The landing page has no query provider, so these fetch on their own and share one
+   request per endpoint. */
+
+const cache = new Map<string, Promise<unknown>>();
+function load<T>(path: string, body?: unknown): Promise<T> {
+  const base = resolverUrlOrNull(DEFAULT_CHAIN);
+  if (!base) return Promise.reject(new Error("no resolver configured"));
+  const key = `${path}${body ? JSON.stringify(body) : ""}`;
+  let p = cache.get(key);
+  if (!p) {
+    p = fetch(`${base}${path}`, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : undefined).then((r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    });
+    p.catch(() => cache.delete(key)); // a failed request is retried by the next frame that mounts
+    cache.set(key, p);
+  }
+  return p as Promise<T>;
+}
+type Live<T> = { data: T | null; state: "loading" | "ok" | "down" };
+function useLive<T>(path: string, body?: unknown): Live<T> {
+  const [v, set] = useState<Live<T>>({ data: null, state: "loading" });
+  useEffect(() => {
+    let on = true;
+    load<T>(path, body).then((data) => on && set({ data, state: "ok" }), () => on && set({ data: null, state: "down" }));
+    return () => { on = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path]);
+  return v;
+}
+
+/** The order every quote frame shows: the stock and the USDG amount are inputs, everything else is the answer. */
+const QUOTE = { ticker: "NVDA", side: "buy", usdAmount: "100" } as const;
+const INDEX = "pxMAG7";
+const useQuote = () => useLive<ResolveResponse>("/resolve", QUOTE);
+/** Where the numbers in a frame come from, and whether that network is made of mocks. */
+function useSource() {
+  const h = useLive<Health>("/health");
+  if (h.state === "loading") return "…";
+  if (!h.data?.label) return "resolver not reachable";
+  return `${h.data.label.name}${h.data.label.mocked.length ? " · mock data" : ""}`;
+}
+const Down = () => <div className="p-4 text-[12px] muted">The resolver is not reachable, so there is nothing to show here.</div>;
+const Wait = () => <div className="p-4 text-[12px] muted">Reading from the resolver…</div>;
 
 export function Frame({ title, meta, children, className = "" }: { title: ReactNode; meta?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -38,177 +85,157 @@ export const No = ({ children }: { children: ReactNode }) => (
 );
 
 const Th = ({ children, right = false }: { children: ReactNode; right?: boolean }) => <th className={right ? "text-right" : ""}>{children}</th>;
-const Td = ({ children, right = false, className = "", colSpan }: { children: ReactNode; right?: boolean; className?: string; colSpan?: number }) => (
-  <td className={`${right ? "text-right whitespace-nowrap" : ""} ${className}`} colSpan={colSpan}>{children}</td>
+const Td = ({ children, right = false, className = "" }: { children: ReactNode; right?: boolean; className?: string }) => (
+  <td className={`${right ? "text-right whitespace-nowrap" : ""} ${className}`}>{children}</td>
 );
 
-/* ---------- Resolver: ranked representations for one order ---------- */
+/* ---------- Resolver: the candidates for one order, as the resolver ranks them ---------- */
 export function ResolveFrame({ compact = false, venue = true, mini = false }: { compact?: boolean; venue?: boolean; mini?: boolean }) {
   compact = compact || mini;
   const showVenue = venue && !compact;
   const showRatio = !mini;
+  const q = useQuote();
+  const source = useSource();
+  const r = q.data;
   return (
-    <Frame title={mini ? "Resolve · NVDA" : "Resolve · NVDA · 100 USDT"} meta={mini ? "mainnet fork" : "mainnet fork · 17 Sep 2026"}>
-      <table className={`grid ${compact ? "text-[12px] [&_td]:!px-3 [&_th]:!px-3" : ""}`}>
-        <thead>
-          <tr>
-            <Th>{mini ? "Token" : "Representation"}</Th>
-            {showRatio && <Th>Ratio</Th>}
-            {showVenue && <Th>Venue</Th>}
-            <Th right>{mini ? "Cost / sh" : "Cost / share"}</Th>
-            <Th right>{mini ? "vs ref" : "vs Chainlink"}</Th>
-            {!compact && <Th right>Attestation</Th>}
-          </tr>
-        </thead>
-        <tbody>
-          <tr className="chosen">
-            <Td className="whitespace-nowrap">
-              <span className="font-semibold">NVDAB</span> {!mini && <span className="tag ml-1">bStocks</span>} {!compact && <span className="tag tag-green ml-1">chosen</span>}
-            </Td>
-            {showRatio && <Td className="num whitespace-nowrap">1.000778{!compact && <span className="muted-2 text-[11px]"> onchain</span>}</Td>}
-            {showVenue && <Td className="num whitespace-nowrap">PancakeSwap v3 · 0.25%</Td>}
-            <Td right className="num font-medium">$219.01</Td>
-            <Td right className="num" >
-              <span style={{ color: "var(--accent-dark)" }}>−8 bps</span>
-            </Td>
-            {!compact && <Td right className="num"><Ok>0.1 h</Ok></Td>}
-          </tr>
-          <tr>
-            <Td className="whitespace-nowrap">
-              <span className="font-semibold">NVDAon</span> {!mini && <span className="tag ml-1">Ondo</span>}
-            </Td>
-            {showRatio && <Td className="num whitespace-nowrap">1.003701{!compact && <span className="muted-2 text-[11px]"> keeper</span>}</Td>}
-            {showVenue && <Td className="num whitespace-nowrap">PancakeSwap v3 · 1% · thin</Td>}
-            <Td right className="num">$219.88</Td>
-            <Td right className="num">+31 bps</Td>
-            {!compact && <Td right className="num"><Ok>0.1 h</Ok></Td>}
-          </tr>
-        </tbody>
-      </table>
-      <div className={`grid ${mini ? "grid-cols-1 gap-2" : compact ? "grid-cols-2 gap-4" : "grid-cols-3 gap-4"} px-4 py-3 border-t line text-[12px]`} style={{ background: "var(--soft)" }}>
-        <div className={mini ? "flex justify-between items-baseline" : ""}>
-          <div className="muted whitespace-nowrap">minShares · onchain</div>
-          <div className="num font-medium mt-0.5">0.454321 sh</div>
-        </div>
-        <div className={mini ? "flex justify-between items-baseline" : ""}>
-          <div className="muted">simulation</div>
-          <div className="mt-0.5 whitespace-nowrap"><Ok>{mini ? "ok" : "ok · from sender address"}</Ok></div>
-        </div>
-        {!compact && <div>
-          <div className="muted">quote</div>
-          <div className="mono mt-0.5">0x7c3c1f3e…4041</div>
-        </div>}
-      </div>
+    <Frame title={mini ? `Resolve · ${QUOTE.ticker}` : `Resolve · ${QUOTE.ticker} · ${QUOTE.usdAmount} USDG`} meta={source}>
+      {q.state === "down" ? <Down /> : !r ? <Wait /> : (
+        <>
+          <table className={`grid ${compact ? "text-[12px] [&_td]:!px-3 [&_th]:!px-3" : ""}`}>
+            <thead>
+              <tr>
+                <Th>Token</Th>
+                {showRatio && <Th>{compact ? "Sh / token" : "Shares / token"}</Th>}
+                {showVenue && <Th>Venue</Th>}
+                <Th right>{mini ? "Cost / sh" : "Cost / share"}</Th>
+                <Th right>vs ref</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {r.candidates.map((c) => {
+                const chosen = r.chosen?.split.some((s) => s.token.toLowerCase() === c.token.toLowerCase()) ?? false;
+                const priced = c.costPerShareUsd !== "0";
+                return (
+                  <tr key={c.token} className={chosen ? "chosen" : ""}>
+                    <Td className="whitespace-nowrap">
+                      <span className="font-semibold">{c.symbol}</span> {!mini && <span className="tag ml-1">{platformName(c.platform)}</span>} {!compact && chosen && <span className="tag tag-green ml-1">chosen</span>}
+                    </Td>
+                    {showRatio && <Td className="num whitespace-nowrap">{fmt(c.ratio, 18, 6)}{!compact && c.ratioSource === "ERC8056" && <span className="muted-2 text-[11px]"> on chain</span>}</Td>}
+                    {showVenue && <Td className="num whitespace-nowrap">{venueName(c.venue)}</Td>}
+                    <Td right className="num font-medium">{priced ? usd(c.costPerShareUsd) : "n/a"}</Td>
+                    <Td right className="num">{priced ? bps(c.premiumBps) : "n/a"}</Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className={`grid ${mini ? "grid-cols-1 gap-2" : compact ? "grid-cols-2 gap-4" : "grid-cols-3 gap-4"} px-4 py-3 border-t line text-[12px]`} style={{ background: "var(--soft)" }}>
+            <div className={mini ? "flex justify-between items-baseline" : ""}>
+              <div className="muted whitespace-nowrap">minShares · on chain</div>
+              <div className="num font-medium mt-0.5">{r.chosen ? `${fmt(r.chosen.minShares, 18, 6)} sh` : "no route"}</div>
+            </div>
+            <div className={mini ? "flex justify-between items-baseline" : ""}>
+              <div className="muted">reference</div>
+              <div className="num mt-0.5 whitespace-nowrap">{usd(r.referencePrice)}</div>
+            </div>
+            {!compact && <div>
+              <div className="muted">quote</div>
+              <div className="mono mt-0.5">{short(r.quoteHash, 10)}</div>
+            </div>}
+          </div>
+        </>
+      )}
     </Frame>
   );
 }
 
 /* ---------- ShareRouter: minShares in shares, not tokens ---------- */
 export function RouterFrame() {
-  const rows: [string, ReactNode][] = [
-    ["target", <span className="mono" key="t">SmartRouter 0x13f4…8Dd4 · allowlisted</span>],
-    ["approval", "forceApprove(maxIn) → reset to 0"],
-    ["sharesOut", <span className="num" key="s">0.4566 sh = 0.456245 NVDAB × 1.000778</span>],
-    ["minShares", <span className="num" key="m">0.4543 sh (99.5 %)</span>],
-  ];
+  const q = useQuote();
+  const r = q.data;
+  const c = r?.chosen ? r.candidates.find((x) => r.chosen!.split.some((s) => s.token.toLowerCase() === x.token.toLowerCase())) : undefined;
+  const floorPct = r?.chosen && BigInt(r.chosen.sharesOut) > 0n ? Number((BigInt(r.chosen.minShares) * 10_000n) / BigInt(r.chosen.sharesOut)) / 100 : null;
+  const rows: [string, ReactNode][] = r?.chosen && c ? [
+    ["target", <span key="t">{venueName(c.venue)} · allowlisted</span>],
+    ["approval", "forceApprove(maxIn), then reset to 0"],
+    ["sharesOut", <span className="num" key="s">{fmt(r.chosen.sharesOut, 18, 4)} sh = {fmt(c.tokensOut, 18, 6)} {c.symbol} × {fmt(c.ratio, 18, 6)}</span>],
+    ["minShares", <span className="num" key="m">{fmt(r.chosen.minShares, 18, 4)} sh{floorPct !== null ? ` (${floorPct.toFixed(1)}%)` : ""}</span>],
+  ] : [];
   return (
     <Frame title="ShareRouter.buyShares" meta="share-denominated slippage">
-      <div className="p-4">
-        <div className="mono text-[12px] muted">buyShares(NVDA, 100e18 USDT, minShares = 0.4543e18, legs[])</div>
-        <div className="mt-4 space-y-3">
-          <div>
-            <div className="flex justify-between text-[12px]"><span className="muted">shares out</span><span className="num font-medium">0.4566</span></div>
-            <div className="bar mt-1.5"><span style={{ width: "100%", background: "var(--accent-dark)" }} /></div>
-          </div>
-          <div>
-            <div className="flex justify-between text-[12px]"><span className="muted">minShares (99.5 %)</span><span className="num">0.4543</span></div>
-            <div className="bar mt-1.5"><span style={{ width: "99.5%", background: "var(--accent-soft)" }} /></div>
-          </div>
-        </div>
-        <dl className="mt-4 grid grid-cols-[92px_1fr] gap-y-1.5 text-[12px]">
-          {rows.map(([k, v]) => (
-            <div key={k} className="contents">
-              <dt className="muted">{k}</dt>
-              <dd>{v}</dd>
+      {q.state === "down" ? <Down /> : !r ? <Wait /> : !r.chosen || !c ? <div className="p-4 text-[12px] muted">No route for this order right now.</div> : (
+        <div className="p-4">
+          <div className="mono text-[12px] muted">buyShares({r.underlying}, {fmtUsdg(r.chosen.usdgIn)} USDG, minShares, legs[])</div>
+          <div className="mt-4 space-y-3">
+            <div>
+              <div className="flex justify-between text-[12px]"><span className="muted">shares out</span><span className="num font-medium">{fmt(r.chosen.sharesOut, 18, 4)}</span></div>
+              <div className="bar mt-1.5"><span style={{ width: "100%", background: "var(--accent-dark)" }} /></div>
             </div>
-          ))}
-        </dl>
-        <div className="mt-4 pt-3 border-t line text-[12px]"><Ok>Σ shares ≥ minShares → RouteReceipt(quoteHash, sharesOut, …)</Ok></div>
-      </div>
+            <div>
+              <div className="flex justify-between text-[12px]"><span className="muted">minShares{floorPct !== null ? ` (${floorPct.toFixed(1)}%)` : ""}</span><span className="num">{fmt(r.chosen.minShares, 18, 4)}</span></div>
+              <div className="bar mt-1.5"><span style={{ width: `${floorPct ?? 100}%`, background: "var(--accent-soft)" }} /></div>
+            </div>
+          </div>
+          <dl className="mt-4 grid grid-cols-[92px_1fr] gap-y-1.5 text-[12px]">
+            {rows.map(([k, v]) => (
+              <div key={k} className="contents">
+                <dt className="muted">{k}</dt>
+                <dd>{v}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="mt-4 pt-3 border-t line text-[12px]"><Ok>Σ shares ≥ minShares → RouteReceipt(quoteHash, sharesOut, …)</Ok></div>
+        </div>
+      )}
     </Frame>
   );
 }
 
-/* ---------- Basket: composition with backing per constituent ---------- */
-/* pxMAG7 as deployed on BSC mainnet (0x38bf68E3…9728): shares per unit from the vault, the bar is each
-   constituent's weight by value at today's reference prices. */
-const MAG7: [string, string, number][] = [["NVDA", "0.0644", 93], ["AAPL", "0.0425", 91], ["MSFT", "0.0289", 91], ["AMZN", "0.0561", 91], ["GOOGL", "0.0407", 93], ["META", "0.0213", 100], ["TSLA", "0.0391", 92]];
+/* ---------- Index: what one unit is, in shares, with backing per constituent once anything is minted ---------- */
 export function BasketFrame({ rows = 7 }: { rows?: number }) {
+  const b = useLive<BasketDetail>(`/baskets/${INDEX}`);
+  const source = useSource();
+  const d = b.data;
+  const minted = d ? BigInt(d.totalSupply ?? "0") > 0n : false;
+  const ratios = (d?.constituents ?? []).map((c) => c.backingRatio).filter((x): x is number => x !== null);
+  const top = Math.max(1, ...(d?.constituents ?? []).map((c) => c.weightBps ?? 0));
   return (
-    <Frame title="pxMAG7 · index" meta="7 constituents · live on mainnet">
-      <div className="grid grid-cols-2 divide-x line border-b line">
-        <div className="p-4">
-          <div className="muted text-[12px] whitespace-nowrap">Backing · in shares</div>
-          <div className="numeral text-[32px] leading-none mt-2">1.0031</div>
-          <div className="text-[11px] mt-2"><span className="tag tag-green">≥ 1.00 on every constituent</span></div>
-        </div>
-        <div className="p-4">
-          <div className="muted text-[12px] whitespace-nowrap">NAV / unit · display</div>
-          <div className="numeral text-[32px] leading-none mt-2">$103.30</div>
-          <div className="text-[11px] muted-2 mt-1">units are shares; no oracle to mint or redeem</div>
-        </div>
-      </div>
-      <div className="p-4 space-y-2.5">
-        {MAG7.slice(0, rows).map(([t, sh, w]) => (
-          <div key={t} className="grid grid-cols-[52px_64px_1fr_56px] items-center gap-3 text-[12px]">
-            <span className="font-semibold">{t}</span>
-            <span className="muted num">{sh} sh/u</span>
-            <div className="bar"><span style={{ width: `${w}%`, background: "var(--accent-dark)" }} /></div>
-            <span className="num text-right"><Ok>1.0001</Ok></span>
+    <Frame title={`${INDEX} · index`} meta={d ? `${d.constituents.length} constituents · ${source}` : source}>
+      {b.state === "down" ? <Down /> : !d ? <Wait /> : (
+        <>
+          <div className="grid grid-cols-2 divide-x line border-b line">
+            <div className="p-4">
+              <div className="muted text-[12px] whitespace-nowrap">Backing · in shares</div>
+              <div className="numeral text-[32px] leading-none mt-2">{minted && ratios.length ? Math.min(...ratios).toFixed(4) : "≥ 1.00"}</div>
+              <div className="text-[11px] mt-2">{minted ? <span className={d.backingOk ? "tag tag-green" : "tag"}>{d.backingOk ? "≥ 1.00 on every constituent" : "below 1.00"}</span> : <span className="muted-2">the rule every mint is checked against</span>}</div>
+            </div>
+            <div className="p-4">
+              <div className="muted text-[12px] whitespace-nowrap">NAV / unit · display</div>
+              <div className="numeral text-[32px] leading-none mt-2">{usd(d.navPerUnitUsd)}</div>
+              <div className="text-[11px] muted-2 mt-1">units are shares; no oracle to mint or redeem</div>
+            </div>
           </div>
-        ))}
-      </div>
+          <div className="p-4 space-y-2.5">
+            {d.constituents.slice(0, rows).map((c) => (
+              <div key={c.ticker} className="grid grid-cols-[52px_64px_1fr_56px] items-center gap-3 text-[12px]">
+                <span className="font-semibold">{c.ticker}</span>
+                <span className="muted num">{fmt(c.sharesPerUnit, 18, 4)} sh/u</span>
+                <div className="bar"><span style={{ width: `${((c.weightBps ?? 0) / top) * 100}%`, background: "var(--accent-dark)" }} /></div>
+                <span className="num text-right">{c.backingRatio !== null ? <Ok>{c.backingRatio.toFixed(4)}</Ok> : c.weightBps !== null && c.weightBps !== undefined ? `${(c.weightBps / 100).toFixed(1)}%` : ""}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </Frame>
   );
 }
 
-/* ---------- Migration: monotone check ---------- */
-export function MigrateFrame() {
-  return (
-    <Frame title="BasketVault.migrate" meta="permissionless · monotone">
-      <div className="p-4 text-[12px]">
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-          <div className="card p-3">
-            <div className="muted">from</div>
-            <div className="font-semibold mt-0.5">NVDAon <span className="tag ml-1">Ondo</span></div>
-            <div className="num muted mt-1">0.300000 sh held</div>
-          </div>
-          <span className="muted-2 text-lg">→</span>
-          <div className="card p-3">
-            <div className="muted">to</div>
-            <div className="font-semibold mt-0.5">NVDAB <span className="tag ml-1">bStocks</span></div>
-            <div className="num muted mt-1">0.300144 sh after</div>
-          </div>
-        </div>
-        <ul className="mt-4 space-y-2">
-          <li><Ok>NVDA shares strictly rise · +0.000144 ≥ minShareGain</Ok></li>
-          <li><Ok>no other constituent decreases</Ok></li>
-          <li><Ok>vault USDT does not decrease · issuer cap 80% holds</Ok></li>
-        </ul>
-        <div className="mt-4 pt-3 border-t line flex items-center justify-between">
-          <span className="muted">1% pool at block 61.2M</span>
-          <No>not share-accretive → revert</No>
-        </div>
-      </div>
-    </Frame>
-  );
-}
-
-/* ---------- Agent mandate: caps the agent cannot break ---------- */
+/* ---------- Agent mandate: what the contract checks. No figures: the owner sets them. ---------- */
 export function MandateFrame() {
-  const caps: [string, string][] = [["Per-tx cap", "$50"], ["Daily cap", "$100 · $50 spent"], ["Expiry", "in 7 days"], ["Allowed", "NVDA · pxMAG7"], ["Recipient", "owner, always"]];
+  const caps: [string, string][] = [["Per-tx cap", "in USDG, set by the owner"], ["Daily cap", "24-hour window from the first spend"], ["Expiry", "checked on every call"], ["Allowed", "the stocks and indices the owner lists"], ["Recipient", "owner, always"]];
   return (
-    <Frame title="AgentMandate #1" meta="active · onchain">
+    <Frame title="AgentMandate" meta="enforced on chain">
       <dl className="p-4 grid grid-cols-[110px_1fr] gap-y-2 text-[12px]">
         {caps.map(([k, v]) => (
           <div key={k} className="contents">
@@ -218,117 +245,57 @@ export function MandateFrame() {
         ))}
       </dl>
       <div className="px-4 py-3 border-t line text-[12px]" style={{ background: "var(--soft)" }}>
-        <div className="mono">agent → buy $500 NVDA</div>
-        <div className="mt-1.5"><No>refused: exceeds per-tx cap 50</No></div>
-        <div className="muted-2 mt-1">checked before sending · enforced by AgentMandate onchain</div>
+        <div className="mono">agent → an order above the per-tx cap</div>
+        <div className="mt-1.5"><No>reverts: PerTxCapExceeded(amount, cap)</No></div>
+        <div className="muted-2 mt-1">checked before sending, then enforced by the contract</div>
       </div>
     </Frame>
   );
 }
 
-/* ---------- Receipt: the fill links to its scoring record ----------
-   A real RouteReceipt from the hybrid end-to-end run on BSC testnet (tx 0xb1895466…dc8e, block 132,504,752):
-   the NVDA leg of a $100 pxMAG7 mint. Ratio, shares and quote hash are the values the contract emitted. */
+/* ---------- Receipt: the fill links to its scoring record. The newest one the resolver has indexed, or the fields it will carry. ---------- */
 export function ReceiptFrame() {
-  const rows: [string, ReactNode][] = [
+  const rs = useLive<{ receipts: Receipt[] }>("/receipts?limit=1");
+  const h = useLive<Health>("/health");
+  const source = useSource();
+  const r = rs.data?.receipts[0];
+  const usdgIn = r && h.data ? r.token_in.toLowerCase() === h.data.deployment.usdg.toLowerCase() : false;
+  const rows: [string, ReactNode][] = r ? [
     ["event", <span className="mono" key="e">RouteReceipt</span>],
-    ["underlying", "NVDA"],
-    ["tokenOut", <span key="t">NVDAB <span className="tag ml-1">bStocks</span></span>],
-    ["ratio", <span className="num" key="r">1.000778 sh / token</span>],
-    ["sharesOut", <span className="num" key="s">0.062731</span>],
-    ["usdtIn", <span className="num" key="u">14.27</span>],
-    ["quoteHash", <span className="mono" key="q">0x07157ec817eeb097…</span>],
-    ["tx", <span className="mono" key="x">0xb1895466…dc8e</span>],
+    ["action", r.action],
+    ["underlying", r.underlying],
+    ["tokenOut", <span className="mono" key="t">{short(r.representation, 8)}</span>],
+    ["ratio", <span className="num" key="r">{fmt(r.ratio, 18, 6)} sh / token</span>],
+    ["sharesOut", <span className="num" key="s">{fmt(r.shares_out, 18, 6)}</span>],
+    ["amountIn", <span className="num" key="u">{usdgIn ? `${fmtUsdg(r.amount_in)} USDG` : fmt(r.amount_in, 18, 6)}</span>],
+    ["quoteHash", <span className="mono" key="q">{short(r.quote_hash, 12)}</span>],
+    ["tx", <span className="mono" key="x">{short(r.tx_hash, 10)}</span>],
+  ] : [
+    ["event", <span className="mono" key="e">RouteReceipt</span>],
+    ["underlying", "the stock that was bought or sold"],
+    ["tokenOut", "the token received"],
+    ["ratio", "shares per token at execution"],
+    ["sharesOut", "tokens received × ratio"],
+    ["amountIn", "USDG spent"],
+    ["quoteHash", "the scoring record this fill was built from"],
   ];
   return (
-    <Frame title="Receipt" meta="recorded · bsc testnet">
-      <dl className="p-4 grid grid-cols-[92px_1fr] gap-y-2 text-[12px]">
-        {rows.map(([k, v]) => (
-          <div key={k} className="contents">
-            <dt className="muted">{k}</dt>
-            <dd>{v}</dd>
+    <Frame title="Receipt" meta={rs.state === "ok" ? `${r ? "latest" : "none yet"} · ${source}` : source}>
+      {rs.state === "down" ? <Down /> : rs.state === "loading" ? <Wait /> : (
+        <>
+          <dl className="p-4 grid grid-cols-[92px_1fr] gap-y-2 text-[12px]">
+            {rows.map(([k, v]) => (
+              <div key={k} className="contents">
+                <dt className="muted">{k}</dt>
+                <dd>{v}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="px-4 py-3 border-t line text-[12px] muted" style={{ background: "var(--soft)" }}>
+            {r ? "Open the scoring record: the candidates, their cost per share and the policy that produced this fill." : "No fill has been indexed on this network yet. These are the fields every receipt carries."}
           </div>
-        ))}
-      </dl>
-      <div className="px-4 py-3 border-t line text-[12px] muted" style={{ background: "var(--soft)" }}>
-        Open the scoring record: candidates, premiums, attestation ages and the policy that produced this fill.
-      </div>
+        </>
+      )}
     </Frame>
-  );
-}
-
-/* ---------- Fragmentation: the same stock, two tokens ---------- */
-export function FragmentationTable() {
-  const rows: [string, ReactNode, ReactNode][] = [
-    ["Issuer", "Ondo Global Markets", "bStocks (BTech)"],
-    ["Contract", <span className="mono" key="a">0xa9ee…6f75</span>, <span className="mono" key="b">0x02fc…7436</span>],
-    ["Shares per token", <span className="num" key="c">1.003701 · keeper-posted</span>, <span className="num" key="d">1.000778 · ERC-8056 onchain</span>],
-    ["AMM liquidity", <span className="num" key="e">$8.7k · 1% pool</span>, <span className="num" key="f">$1.24M · 0.25% pool</span>],
-    ["Primary venue", "Binance RFQ (EOA-signed)", "PancakeSwap v3"],
-    ["Attestation", "daily report", "daily proof of collateral"],
-    ["Controls", "pause · blocklist · upgradeable", "pause · blocklist · upgradeable"],
-  ];
-  return (
-    <div className="frame">
-      <div className="frame-bar"><b>NVDA on BNB Chain</b><span>one company · one reference price · two tokens</span></div>
-      <table className="grid">
-        <thead>
-          <tr><Th>Attribute</Th><Th>NVDAon</Th><Th>NVDAB</Th></tr>
-        </thead>
-        <tbody>
-          {rows.map(([k, a, b]) => (
-            <tr key={k}><Td className="muted">{k}</Td><Td>{a}</Td><Td>{b}</Td></tr>
-          ))}
-          <tr>
-            <Td className="muted">Parallax view</Td>
-            <Td className="font-medium" colSpan={2}>
-              <span style={{ color: "var(--accent-dark)" }}>one underlying, two routes</span>: every token measured in shares, cost per share, policy, best route
-            </Td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/* ---------- Data pipeline: what feeds the resolver (vertical, for the "under the hood" column) ---------- */
-export function PipelineFrame() {
-  const stages: [string, string, string][] = [
-    ["Binance Web3 API", "RWA ratios · attestation URLs · market status", "live with key · else fixtures"],
-    ["ERC-8056 onchain", "uiMultiplier() shares-per-token for bStocks", "live"],
-    ["Chainlink feeds", "reference price · deviation checks · display NAV", "live"],
-    ["PancakeSwap v3 quoter", "executable quotes · slippage per leg", "live"],
-    ["Resolver", "shares = tokens × ratio · cost per share · policy", "scored"],
-    ["ShareRouter · BasketVault", "minShares in shares · backing ≥ 1.00 · receipt", "onchain"],
-  ];
-  return (
-    <div className="frame">
-      <div className="frame-bar"><b>Buy $100 NVDA</b><span className="mono text-[11px]">max 60 bps · attest ≤ 36 h</span></div>
-      <ol className="p-4 relative">
-        <div className="absolute left-[27px] top-6 bottom-6 w-px" style={{ background: "var(--line)" }} aria-hidden />
-        {stages.map(([t, d, tag], i) => (
-          <li key={t} className="relative pl-9 py-2.5">
-            <span className="absolute left-1.5 top-3.5 w-5 h-5 rounded-full border line flex items-center justify-center text-[10px] font-semibold num" style={{ background: i >= 4 ? "var(--accent)" : "var(--bg-elev)", color: i >= 4 ? "#fff" : "var(--fg)", borderColor: i >= 4 ? "var(--accent)" : undefined }}>{i + 1}</span>
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="font-medium text-[13px]">{t}</span>
-              <span className={`text-[10px] whitespace-nowrap ${tag === "live" || tag === "onchain" || tag === "scored" ? "tag tag-green" : "tag"}`}>{tag}</span>
-            </div>
-            <div className="muted text-[12px] mt-0.5">{d}</div>
-          </li>
-        ))}
-      </ol>
-    </div>
-  );
-}
-
-/* ---------- Small stat tile (evidence cards) ---------- */
-export function StatTile({ big, label, tone }: { big: string; label: string; tone?: "good" | "bad" }) {
-  return (
-    <div className="frame w-fit min-w-[150px]">
-      <div className="p-4">
-        <div className="numeral text-[30px] leading-none" style={{ color: tone === "good" ? "var(--accent-dark)" : tone === "bad" ? "var(--bad)" : "var(--fg)" }}>{big}</div>
-        <div className="muted text-[11px] mt-2 uppercase tracking-wider">{label}</div>
-      </div>
-    </div>
   );
 }

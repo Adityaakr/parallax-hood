@@ -2,9 +2,9 @@
 /*
  * Ask: the agent's tool surface, in a text box.
  *
- * The MCP server gives an agent fifteen tools; this runs the same ones from the browser, so a person can do in
- * one line what an agent does in one call, and see the identical result: the route that was chosen, why, the
- * quote hash it is recorded under, and the transaction to sign.
+ * The MCP server gives an agent ten read tools and one write tool; this runs the read ones from the browser, so
+ * a person can do in one line what an agent does in one call, and see the identical result: the route that was
+ * chosen, why, the quote hash it is recorded under, and the transaction to sign.
  *
  * There is no model in this path on purpose. A sentence is matched to one tool and its arguments by rules that
  * are visible in this file, the resolver answers, and the answer is rendered from that response. Nothing here
@@ -12,8 +12,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "wagmi";
-import { apiRequest, useApiBase, type BasketCard, type MintQuote, type RedeemQuote, type ResolveResponse, type Receipt, type Stock } from "@/lib/api";
-import { fmt, usd, short } from "@/lib/format";
+import { apiRequest, useApi, useApiBase, type BasketCard, type Health, type MintQuote, type RedeemQuote, type ResolveResponse, type Receipt, type Stock } from "@/lib/api";
+import { fmt, fmtUsdg, usd, usdgNumber, platformName, venueName } from "@/lib/format";
 import { A, Banner, Tag } from "@/components/ui";
 import { TxButton } from "@/components/TxButton";
 import { Ic } from "./icons";
@@ -21,8 +21,13 @@ import { TokenMark } from "./TokenMark";
 import { StockLogo } from "./StockLogo";
 import { AddressLink } from "@/components/app/AddressLink";
 
+/** The Parallax MCP server's tools (apps/mcp). Every one reads, except the last, which can only act through a mandate. */
+export const MCP_READ_TOOLS = ["search_stocks", "resolve_stock", "list_baskets", "get_basket", "quote_basket_mint", "quote_basket_redeem", "get_mandate", "build_create_mandate", "get_receipts", "explain_receipt"] as const;
+export const MCP_WRITE_TOOL = "execute_with_mandate";
+
+/** Caps are raw USDG (6 decimals), exactly as the contract stores them. */
 export type MandateSummary = {
-  id: bigint; agent: `0x${string}`; perTxCapUsdt: bigint; dailyCapUsdt: bigint; remaining: bigint;
+  id: bigint; agent: `0x${string}`; perTxCapUsdg: bigint; dailyCapUsdg: bigint; remaining: bigint;
   expiry: bigint; active: boolean; maxSlippageBps: number;
 };
 
@@ -38,7 +43,7 @@ type Plan =
 
 type Turn = { id: number; q: string; plan: Plan; pending: boolean; error?: string; data?: unknown };
 
-const AMOUNT = /\$\s?([\d,]+(?:\.\d+)?)|\b([\d,]+(?:\.\d+)?)\s?(?:usdt|usd|dollars?)\b/i;
+const AMOUNT = /\$\s?([\d,]+(?:\.\d+)?)|\b([\d,]+(?:\.\d+)?)\s?(?:usdg|usd|dollars?)\b/i;
 const UNITS = /\b([\d.]+)\s?(?:units?|px[a-z0-9]+)\b/i;
 
 /** One sentence to one tool. Everything it matches on is a ticker or a basket the resolver already told us about. */
@@ -66,7 +71,7 @@ export function plan(q: string, ctx: { tickers: string[]; baskets: string[] }): 
     if (/\b(compare|issuer|where|which|route|cheaper|versus|vs)\b/.test(low) || !amount) return { tool: "get_stock", ticker };
     return { tool: "resolve_stock", ticker, usd: amount };
   }
-  const word = low.match(/\b[a-z]{2,12}\b/g)?.filter((w) => !["buy", "the", "for", "with", "into", "invest", "show", "what", "usdt", "usd", "worth", "some", "best", "give", "find"].includes(w));
+  const word = low.match(/\b[a-z]{2,12}\b/g)?.filter((w) => !["buy", "the", "for", "with", "into", "invest", "show", "what", "usdg", "usd", "worth", "some", "best", "give", "find"].includes(w));
   if (word?.length) return { tool: "search_stocks", query: word[word.length - 1]! };
   return { tool: "help", reason: `I could not find a stock or an index in that.` };
 }
@@ -82,25 +87,23 @@ const TOOL_LABEL: Record<Plan["tool"], string> = {
   help: "none",
 };
 
-/* Grouped the way the product divides: put money in, find the cheaper side, look at what you hold, get out. */
+/* Grouped the way the product divides: put money in, see the route, look at what happened, get out. */
 const GROUPS: { label: string; items: { q: string; mark: string }[] }[] = [
   { label: "Invest", items: [
     { q: "Invest $50 in pxMAG7", mark: "pxMAG7" },
     { q: "Buy $100 of NVDA", mark: "NVDA" },
     { q: "Put $250 into pxAI", mark: "pxAI" },
   ] },
-  { label: "Compare", items: [
-    { q: "Compare issuers for MSFT", mark: "MSFT" },
-    { q: "Which issuer is cheaper for NVDA", mark: "NVDA" },
+  { label: "Route", items: [
+    { q: "Show the route for MSFT", mark: "MSFT" },
+    { q: "What does a share of NVDA cost", mark: "NVDA" },
     { q: "Where does AAPL have liquidity", mark: "AAPL" },
   ] },
-  { label: "Your position", items: [
-    { q: "What do I hold?", mark: "" },
+  { label: "Your account", items: [
     { q: "Show my receipts", mark: "" },
     { q: "What is my agent allowed to do?", mark: "" },
   ] },
   { label: "Get out", items: [
-    { q: "Sell 2 NVDA", mark: "NVDA" },
     { q: "Redeem 1 pxMAG7", mark: "pxMAG7" },
   ] },
 ];
@@ -108,6 +111,8 @@ const GROUPS: { label: string; items: { q: string; mark: string }[] }[] = [
 export function Ask({ stocks, baskets, mandates }: { stocks: Stock[]; baskets: BasketCard[]; mandates: MandateSummary[] }) {
   const base = useApiBase();
   const { address } = useAccount();
+  /* a buy pulls USDG from the wallet, so the button needs the token to approve */
+  const usdg = useApi<Health>("/health").data?.deployment.usdg;
   const [input, setInput] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const next = useRef(1);
@@ -135,7 +140,7 @@ export function Ask({ stocks, baskets, mandates }: { stocks: Stock[]; baskets: B
         return finish({ data: r });
       }
       if (p.tool === "quote_basket_mint") {
-        const r = await apiRequest<MintQuote>(base, `/baskets/${p.symbol}/quote-mint`, { method: "POST", body: JSON.stringify({ budgetUsdt: String(p.usd), wallet: address }) });
+        const r = await apiRequest<MintQuote>(base, `/baskets/${p.symbol}/quote-mint`, { method: "POST", body: JSON.stringify({ budgetUsdg: String(p.usd), wallet: address }) });
         return finish({ data: r });
       }
       if (p.tool === "quote_basket_redeem") {
@@ -206,7 +211,7 @@ export function Ask({ stocks, baskets, mandates }: { stocks: Stock[]; baskets: B
       <div className="ask-head">
         <span className="flex items-center gap-2"><Ic.spark width={16} height={16} /><span className="body-md font-medium">Ask</span></span>
         <span className="flex items-center gap-2">
-          <span className="chip" title="search_stocks, resolve_stock, quote_basket_mint, quote_basket_redeem, get_mandate, get_receipts and nine more">15 MCP tools</span>
+          <span className="chip" title={[...MCP_READ_TOOLS, MCP_WRITE_TOOL].join(", ")}>{MCP_READ_TOOLS.length + 1} MCP tools</span>
           <button className="preset" onClick={() => setTurns([])}>Clear</button>
         </span>
       </div>
@@ -222,7 +227,7 @@ export function Ask({ stocks, baskets, mandates }: { stocks: Stock[]; baskets: B
                 {t.pending && <span className="muted">running…</span>}
               </div>
               <div className="ask-out">
-                {t.error ? <Banner kind="bad">{t.error}</Banner> : <Answer turn={t} mandates={mandates} logo={logoOf(t.plan)} />}
+                {t.error ? <Banner kind="bad">{t.error}</Banner> : <Answer turn={t} mandates={mandates} logo={logoOf(t.plan)} usdg={usdg} />}
               </div>
             </div>
           </div>
@@ -249,13 +254,13 @@ function Mark({ symbol, stocks }: { symbol: string; stocks: Stock[] }) {
   return <StockLogo ticker={symbol} src={s?.logoUrl} size={18} />;
 }
 
-/** Whether the mandate the owner already signed would carry this spend. The allowlist is enforced onchain. */
+/** Whether the mandate the owner already signed would carry this spend. The allowlist is enforced on chain. */
 function MandateCheck({ usdAmount, mandates }: { usdAmount: number; mandates: MandateSummary[] }) {
   const live = mandates.filter((m) => m.active && Number(m.expiry) * 1000 > Date.now());
   if (live.length === 0 || !usdAmount) return null;
   const m = live[0]!;
-  const perTx = Number(m.perTxCapUsdt) / 1e18;
-  const left = Number(m.remaining) / 1e18;
+  const perTx = usdgNumber(m.perTxCapUsdg);
+  const left = usdgNumber(m.remaining);
   const ok = usdAmount <= perTx && usdAmount <= left;
   return (
     <div className="body-xs muted" style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -272,12 +277,12 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
 }
 
 /** Every branch renders only fields the resolver returned; nothing is filled in when a field is missing. */
-function Answer({ turn, mandates, logo }: { turn: Turn; mandates: MandateSummary[]; logo?: string | null }) {
+function Answer({ turn, mandates, logo, usdg }: { turn: Turn; mandates: MandateSummary[]; logo?: string | null; usdg?: `0x${string}` }) {
   const p = turn.plan;
   if (p.tool === "help") {
     return (
       <div className="body-sm muted">
-        {p.reason || "Ask for a quote on a stock or an index, for the issuers behind a stock, for your receipts, or for what your agent is allowed to do."}
+        {p.reason || "Ask for a quote on a stock or an index, for the route behind a stock, for your receipts, or for what your agent is allowed to do."}
       </div>
     );
   }
@@ -291,8 +296,8 @@ function Answer({ turn, mandates, logo }: { turn: Turn; mandates: MandateSummary
         {mandates.map((m) => (
           <div key={String(m.id)}>
             <Row k={`Mandate #${String(m.id)} · agent`} v={<span className="body-xs"><AddressLink value={m.agent} /></span>} />
-            <Row k="Per transaction" v={`${fmt(m.perTxCapUsdt, 18, 2)} USDT`} />
-            <Row k="Left today" v={`${fmt(m.remaining, 18, 2)} of ${fmt(m.dailyCapUsdt, 18, 2)} USDT`} />
+            <Row k="Per transaction" v={`${fmtUsdg(m.perTxCapUsdg)} USDG`} />
+            <Row k="Left today" v={`${fmtUsdg(m.remaining)} of ${fmtUsdg(m.dailyCapUsdg)} USDG`} />
             <Row k="Worst price it may accept" v={`${(m.maxSlippageBps / 100).toFixed(2)}% under the reference`} />
             <Row k="Status" v={m.active && Number(m.expiry) * 1000 > Date.now() ? "active" : "expired or revoked"} />
           </div>
@@ -336,18 +341,23 @@ function Answer({ turn, mandates, logo }: { turn: Turn; mandates: MandateSummary
                 <StockLogo ticker={r.underlying} src={logo} size={18} />
                 <span className="num">{c.symbol}</span>
                 {c.symbol === best?.symbol && r.chosen && <Tag>chosen</Tag>}
-                <Tag>{c.platform === "bstock" ? "bStocks" : c.platform}</Tag>
+                <Tag>{platformName(c.platform)}</Tag>
+                <span className="body-xs muted">{venueName(c.venue)}</span>
                 {!c.eligible && <span className="body-xs muted">{c.reasons[0]}</span>}
               </span>
               <span className="num">{usd(c.costPerShareUsd)} / share <span style={{ color: c.premiumBps <= 0 ? "var(--good)" : "var(--muted)" }}>{c.premiumBps > 0 ? "+" : ""}{c.premiumBps} bps</span></span>
             </div>
           ))}
-          {r.chosen && <Row k="Protected at" v={`${fmt(r.chosen.minShares, 18, 6)} shares minimum, onchain`} />}
+          {r.chosen && <Row k="Protected at" v={`${fmt(r.chosen.minShares, 18, 6)} shares minimum, on chain`} />}
+          {p.tool === "resolve_stock" && r.fee?.totalUsdgIn && <Row k={`You spend, fee of ${(r.fee.bps / 100).toFixed(2)}% included`} v={`${fmtUsdg(r.fee.totalUsdgIn)} USDG`} />}
           {r.quoteHash && <Row k="Scoring record" v={<A href={`/receipts?quote=${r.quoteHash}`}><span className="mono body-xs">{r.quoteHash.slice(0, 18)}…</span></A>} />}
         </div>
         {r.status !== "ok" && <Banner kind="warn">{r.status === "queued_until_open" ? "The market is closed; this route is priced but held until it opens." : "No executable route right now."}</Banner>}
         {p.tool === "resolve_stock" && <MandateCheck usdAmount={p.usd} mandates={mandates} />}
-        {p.tool === "resolve_stock" && <TxButton tx={r.tx} label={`Buy ${usd(p.usd)} of ${r.underlying}`} className="btn btn-primary w-full" disabled={!r.tx} />}
+        {p.tool === "resolve_stock" && (
+          <TxButton tx={r.tx} label={`Buy ${usd(p.usd)} of ${r.underlying}`} className="btn btn-primary w-full" disabled={!r.tx}
+            approval={r.tx && usdg ? { token: usdg, spender: r.router, amount: BigInt(r.fee?.totalUsdgIn ?? r.chosen?.usdgIn ?? "0") } : undefined} />
+        )}
       </div>
     );
   }
@@ -363,15 +373,15 @@ function Answer({ turn, mandates, logo }: { turn: Turn; mandates: MandateSummary
           {nav && <span className="body-sm muted"> · {usd(units * nav)} at today&apos;s prices</span>}
         </div>
         <div className="rounded-2xl" style={{ border: "var(--dash)" }}>
-          <Row k="You spend, at most" v={`${fmt(q.maxUsdtIn, 18, 2)} USDT`} />
-          {q.fee && <Row k={`Fee · ${(q.fee.bps / 100).toFixed(2)}%`} v={usd(fmt(q.fee.usdt, 18, 2))} />}
-          <Row k="Legs" v={`${q.breakdown.length} constituents, each from its cheapest issuer`} />
+          <Row k="You spend, at most" v={`${fmtUsdg(q.maxUsdgIn)} USDG`} />
+          {q.fee && <Row k={`Fee · ${(q.fee.bps / 100).toFixed(2)}%`} v={`${fmtUsdg(q.fee.usdg)} USDG`} />}
+          <Row k="Legs" v={`${q.breakdown.length} constituents, each through its cheapest route`} />
           <Row k="Scoring record" v={<A href={`/receipts?quote=${q.quoteHash}`}><span className="mono body-xs">{q.quoteHash.slice(0, 18)}…</span></A>} />
         </div>
         {q.problems.length > 0 && <Banner kind="warn">{q.problems.join(" · ")}</Banner>}
         <MandateCheck usdAmount={p.usd} mandates={mandates} />
         <TxButton tx={q.tx} label={`Invest ${usd(p.usd)} in ${q.symbol}`} className="btn btn-primary w-full" disabled={!q.tx}
-          approval={q.tx ? { token: q.usdt, spender: q.basket, amount: BigInt(q.maxUsdtIn) } : undefined} />
+          approval={q.tx ? { token: q.usdg, spender: q.basket, amount: BigInt(q.maxUsdgIn) } : undefined} />
       </div>
     );
   }
@@ -380,10 +390,10 @@ function Answer({ turn, mandates, logo }: { turn: Turn; mandates: MandateSummary
     const q = turn.data as RedeemQuote;
     return (
       <div className="flex flex-col gap-3">
-        <div className="ask-headline"><span className="num">{fmt(q.usdtOut, 18, 2)}</span> USDT for {p.units} {p.symbol}</div>
+        <div className="ask-headline"><span className="num">{fmtUsdg(q.usdgOut)}</span> USDG for {p.units} {p.symbol}</div>
         <div className="rounded-2xl" style={{ border: "var(--dash)" }}>
-          <Row k="Guaranteed onchain" v={`${fmt(q.minUsdtOut, 18, 2)} USDT minimum`} />
-          <Row k="Slices" v={`${q.slices.length} representations sold`} />
+          <Row k="Guaranteed on chain" v={`${fmtUsdg(q.minUsdgOut)} USDG minimum`} />
+          <Row k="Slices" v={`${q.slices.length} tokens sold`} />
         </div>
         <TxButton tx={q.tx} label={`Redeem ${p.units} ${p.symbol}`} className="btn btn-primary w-full" disabled={!q.tx} />
       </div>

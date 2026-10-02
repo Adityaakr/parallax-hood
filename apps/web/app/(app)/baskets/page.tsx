@@ -1,5 +1,5 @@
 "use client";
-/* The index shelf: every curated index priced live, with the return over a chosen period, the smallest
+/* The index shelf: every curated index priced by the resolver, with the return over a chosen period, the smallest
    amount that can mint it, and the names inside it. Deployed or not is stated on the card. */
 import Link from "next/link";
 import { useState } from "react";
@@ -51,20 +51,20 @@ function IndexCard({ b, period }: { b: BasketCard; period: Period }) {
 }
 
 function BasketsInner() {
-  const [period, setPeriod] = useState<Period>("y1");
+  const [period, setPeriod] = useState<Period>("m1");
   const q = useApi<{ dataSource: string; quoteOnly?: boolean; baskets: BasketCard[] }>("/baskets", { refetchInterval: 30_000 });
   return (
     <>
       <PageHead
         eyebrow="Indices"
-        title="Themes, minted at best execution."
-        lede="One unit is a fixed number of underlying shares per constituent. Every leg is bought from the cheapest issuer, the backing is enforced onchain, and redeeming in kind can never be paused."
+        title="Indices defined in shares."
+        lede="One unit is a fixed number of underlying shares per constituent, bought with USDG. The vault checks that backing on chain after every mint, and redeeming in kind can never be paused."
         right={<PeriodSeg value={period} onChange={setPeriod} />}
       />
       {q.isLoading && (
         <div className="flex flex-col gap-3">
           <Loading />
-          <p className="body-sm muted px-1">Pricing every constituent of every index across its issuers. A cold resolver takes a few seconds.</p>
+          <p className="body-sm muted px-1">Pricing every constituent of every index. A cold resolver takes a few seconds.</p>
         </div>
       )}
       <ErrorState error={q.error} retry={() => q.refetch()} />

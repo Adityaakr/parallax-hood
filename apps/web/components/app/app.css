@@ -14,6 +14,8 @@
   display: flex; flex-direction: column; gap: 6px; padding: 22px 14px 18px; border-right: var(--dash); transition: width .18s ease; }
 .app-canvas.app-shell[data-collapsed] .rail { width: 74px; }
 .app-canvas .rail-brand { display: flex; align-items: center; gap: 10px; padding: 6px 10px 22px; font-family: var(--font-serif); font-size: 21px; color: var(--color-heading); }
+.app-canvas .rail-word { display: flex; flex-direction: column; gap: 5px; line-height: 1; }
+.app-canvas .rail-sub { font-family: var(--font-sans); font-size: 10.5px; line-height: 1; letter-spacing: 0.03px; text-transform: uppercase; font-weight: 500; color: var(--color-paragraph-soft); white-space: nowrap; }
 .app-canvas .rail-nav { display: flex; flex-direction: column; gap: 2px; }
 .app-canvas .rail-foot { margin-top: auto; display: flex; flex-direction: column; gap: 2px; padding-top: 10px; border-top: var(--dash); }
 .app-canvas .rail-item { display: flex; align-items: center; gap: 12px; padding: 10px 11px; border-radius: 11px; width: 100%;
@@ -28,7 +30,7 @@
 .app-canvas .rail-strip { display: none; }
 
 .app-canvas .app-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: 22px 28px 80px; gap: 16px; }
-.app-canvas .app-body > .toolbar, .app-canvas .app-body > .rail-strip { width: 100%; max-width: 1320px; }
+.app-canvas .app-body > .toolbar, .app-canvas .app-body > .rail-strip, .app-canvas .app-body > .mock-banner, .app-canvas .app-body > .app-foot { width: 100%; max-width: 1320px; }
 .app-canvas .app-main { max-width: 1320px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
 .app-canvas .app-main > * { opacity: 0; transform: translateY(40px); animation: appear 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
 .app-canvas .app-main > *:nth-child(1) { animation-delay: 0.1s; } .app-canvas .app-main > *:nth-child(2) { animation-delay: 0.2s; } .app-canvas .app-main > *:nth-child(3) { animation-delay: 0.3s; } .app-canvas .app-main > *:nth-child(n+4) { animation-delay: 0.4s; }
@@ -287,3 +289,22 @@
   .app-canvas .stack-cell { border-right: 0 !important; } }
 .app-canvas .stack-cell { display: flex; flex-direction: column; gap: 8px; padding: 18px 20px; border-right: var(--dash); border-bottom: var(--dash); }
 .app-canvas .stack-cell p { line-height: 1.55; }
+
+/* Network chip: the name the resolver reports and its kind. A dot and a filled tag, so the kind reads at a glance. */
+.app-canvas .ws.net { cursor: default; padding: 8px 10px 8px 14px; max-width: 100%; }
+.app-canvas .net-dot { width: 8px; height: 8px; border-radius: 8px; background: var(--warn); flex: none; }
+.app-canvas .net[data-kind="mainnet"] .net-dot { background: var(--good); }
+.app-canvas .net-kind { border-color: transparent; background: rgba(180, 83, 9, .14); color: var(--warn); white-space: nowrap; }
+.app-canvas .net[data-kind="mainnet"] .net-kind { background: rgba(31, 122, 69, .12); color: var(--good); }
+/* Standing banner on a network whose tokens, venue or prices are mocks: on every page, above the page itself. */
+.app-canvas .mock-banner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent); background: rgba(180, 83, 9, .07); font-size: 14px; line-height: 19.6px; color: var(--color-heading); }
+.app-canvas .mock-banner b { font-weight: 600; }
+/* Shell footer: the eligibility notice, on every product page. */
+.app-canvas .app-foot { margin-top: auto; padding-top: 18px; border-top: var(--dash); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 24px;
+  font-size: 12.8px; line-height: 18px; color: var(--muted); }
+/* Eligibility dialog: nothing behind it is usable until it is answered. */
+.app-canvas .gate { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px; overflow-y: auto;
+  background: rgba(20, 16, 14, .58); backdrop-filter: blur(4px); }
+.app-canvas .gate-card { width: 100%; max-width: 580px; margin: auto; display: flex; flex-direction: column; gap: 16px; padding: 28px;
+  background: var(--color-card-2); border: var(--dash); border-radius: 15px; }
