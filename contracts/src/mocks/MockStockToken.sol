@@ -6,8 +6,10 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC8056} from "../interfaces/IERC8056.sol";
 
-/// @notice Tokenized-stock stand-in that mimics what Phase 0 found on mainnet:
-///         - ERC-8056 style `uiMultiplier()` (bStocks) when `erc8056 = true`, or a plain ERC-20 (Ondo) otherwise
+/// @notice Tokenized-stock stand-in for tests and local chains.
+///         - `erc8056 = true` mimics a Robinhood Chain stock token: raw ERC-20 balances plus `uiMultiplier()`,
+///           with a scheduled change readable as `newUIMultiplier()` / `effectiveAt()`. `false` is a plain
+///           ERC-20 whose ratio the registry takes from the keeper, kept so a second issuer stays testable.
 ///         - issuer pause and per-address blocklist applied on every transfer (from, to, operator)
 ///         Free mint for tests/testnet.
 contract MockStockToken is ERC20, Ownable, IERC8056 {
@@ -53,21 +55,21 @@ contract MockStockToken is ERC20, Ownable, IERC8056 {
         return _multiplier;
     }
 
-    function pendingMultiplier() external view override returns (uint256, uint256) {
-        if (!hasPendingMultiplier()) return (0, 0);
-        return (_pendingMultiplier, _pendingEffectiveAt);
+    /// @dev Tracks the current multiplier until a change is scheduled, as the real tokens do.
+    function newUIMultiplier() external view override returns (uint256) {
+        return _pendingEffectiveAt == 0 ? _multiplier : _pendingMultiplier;
     }
 
-    function hasPendingMultiplier() public view override returns (bool) {
-        return _pendingEffectiveAt != 0 && block.timestamp < _pendingEffectiveAt;
+    function effectiveAt() external view override returns (uint256) {
+        return _pendingEffectiveAt;
     }
 
-    function toUIAmount(uint256 rawAmount) external view override returns (uint256) {
-        return Math.mulDiv(rawAmount, uiMultiplier(), 1e18);
+    function balanceOfUI(address account) external view override returns (uint256) {
+        return Math.mulDiv(balanceOf(account), uiMultiplier(), 1e18);
     }
 
-    function fromUIAmount(uint256 uiAmount) external view override returns (uint256) {
-        return Math.mulDiv(uiAmount, 1e18, uiMultiplier());
+    function totalSupplyUI() external view override returns (uint256) {
+        return Math.mulDiv(totalSupply(), uiMultiplier(), 1e18);
     }
 
     function _update(address from, address to, uint256 value) internal override {

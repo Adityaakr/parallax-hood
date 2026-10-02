@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IStockRegistry} from "./interfaces/IStockRegistry.sol";
 import {IERC8056} from "./interfaces/IERC8056.sol";
 import {IAggregatorV3} from "./interfaces/IAggregatorV3.sol";
@@ -54,7 +55,10 @@ contract StockRegistry is AccessControl, IStockRegistry {
     mapping(address => StepAnchor) private _ratioAnchor;
     mapping(bytes32 => ReferencePrice) private _refPrice; // keeper-posted fallback when no feed is set
     mapping(bytes32 => StepAnchor) private _priceAnchor;
-    mapping(bytes32 => address) public priceFeedOf; // Chainlink AggregatorV3 per underlying (mainnet Mag 7)
+    mapping(bytes32 => address) public priceFeedOf; // Chainlink AggregatorV3 per underlying
+    /// @notice Set when the feed prices a *token* rather than a share. Robinhood Chain's stock feeds already
+    ///         include the ERC-8056 multiplier, so the share price is the answer divided by that token's ratio.
+    mapping(bytes32 => address) public priceFeedToken;
 
     event UnderlyingSet(bytes32 indexed id, string ticker, bool active);
     event RepresentationSet(
@@ -71,6 +75,7 @@ contract StockRegistry is AccessControl, IStockRegistry {
     event ReferencePricePosted(bytes32 indexed underlyingId, uint256 priceUsd, uint64 updatedAt);
     event PriceRejected(bytes32 indexed underlyingId, uint256 attempted, uint256 last, uint256 stepBps);
     event PriceFeedSet(bytes32 indexed underlyingId, address indexed feed);
+    event PriceFeedTokenSet(bytes32 indexed underlyingId, address indexed token);
     event PriceLimitsSet(uint64 maxPriceAge, uint16 maxPriceStepBps);
 
     error UnknownUnderlying(bytes32 id);
@@ -177,11 +182,22 @@ contract StockRegistry is AccessControl, IStockRegistry {
         emit PriceLimitsSet(maxPriceAge_, maxPriceStepBps_);
     }
 
-    /// @notice Point an underlying at a Chainlink USD feed; it then overrides keeper-posted prices. Zero clears it.
+    /// @notice Point an underlying at a Chainlink USD feed quoted per underlying share; it then overrides
+    ///         keeper-posted prices. Zero clears it.
     function setPriceFeed(bytes32 underlyingId, address feed) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (_underlyings[underlyingId].id == bytes32(0)) revert UnknownUnderlying(underlyingId);
-        priceFeedOf[underlyingId] = feed;
-        emit PriceFeedSet(underlyingId, feed);
+        _setPriceFeed(underlyingId, feed, address(0));
+    }
+
+    /// @notice Point an underlying at a Chainlink USD feed quoted per unit of `token`, one of its registered
+    ///         representations. `referencePrice` divides the answer by the token's live ratio, so every
+    ///         consumer still reads USD per underlying share.
+    function setTokenPriceFeed(bytes32 underlyingId, address feed, address token)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
+        if (feed == address(0)) revert ZeroAddress();
+        if (!_reps[token].exists || _reps[token].underlyingId != underlyingId) revert UnknownRepresentation(token);
+        _setPriceFeed(underlyingId, feed, token);
     }
 
     /// @notice ADMIN override for a ratio outside the step bound (corporate action: split, reverse split).
@@ -368,6 +384,12 @@ contract StockRegistry is AccessControl, IStockRegistry {
         uint8 dec = IAggregatorV3(feed).decimals();
         priceUsd = dec == 18 ? uint256(answer) : uint256(answer) * 1e18 / (10 ** dec);
         updatedAt = uint64(at);
+        address token = priceFeedToken[underlyingId];
+        if (token != address(0)) {
+            (uint256 ratio,) = ratioOf(token);
+            if (ratio == 0) return (0, 0);
+            priceUsd = Math.mulDiv(priceUsd, 1e18, ratio);
+        }
     }
 
     /// @notice Selling out of any registered representation (even deprecated or stale) is always allowed.
@@ -378,6 +400,14 @@ contract StockRegistry is AccessControl, IStockRegistry {
     // ------------------------------------------------------------------
     // Internals
     // ------------------------------------------------------------------
+
+    function _setPriceFeed(bytes32 underlyingId, address feed, address token) internal {
+        if (_underlyings[underlyingId].id == bytes32(0)) revert UnknownUnderlying(underlyingId);
+        priceFeedOf[underlyingId] = feed;
+        priceFeedToken[underlyingId] = token;
+        emit PriceFeedSet(underlyingId, feed);
+        emit PriceFeedTokenSet(underlyingId, token);
+    }
 
     /// @dev Step of `next` in bps against both the previous value and the value at the start of the current
     ///      STEP_WINDOW (the anchor rolls forward to `previous` once the window has elapsed). Returns the larger

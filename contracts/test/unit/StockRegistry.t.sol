@@ -190,6 +190,57 @@ contract StockRegistryTest is BaseTest {
         assertEq(p, NVDA_PX); // back to the keeper's post
     }
 
+    /// Robinhood Chain's stock feeds price the token with its multiplier already in it. The registry must hand
+    /// back USD per underlying share, or the mandate's floor would be off by the multiplier.
+    function test_referencePrice_tokenFeed_isPerShare() public {
+        vm.warp(block.timestamp + 1 days);
+        // NVDAB at $219 a share and a 1.000778 multiplier trades at $219.170382 a token
+        MockAggregator feed = new MockAggregator(8, 219_17038200, block.timestamp - 60);
+        vm.prank(admin);
+        registry.setTokenPriceFeed(NVDA, address(feed), address(nvdaB));
+        assertEq(registry.priceFeedOf(NVDA), address(feed));
+        assertEq(registry.priceFeedToken(NVDA), address(nvdaB));
+
+        (uint256 p, uint64 at) = registry.referencePrice(NVDA);
+        assertEq(p, uint256(219_17038200) * 1e10 * 1e18 / NVDA_B_MULT);
+        assertApproxEqAbs(p, 219e18, 1e12); // the feed above is rounded to 8 decimals
+        assertEq(at, uint64(block.timestamp - 60));
+
+        // a corporate action moves the multiplier and the token price together; the share price follows the feed
+        nvdaB.setMultiplier(NVDA_B_MULT * 2);
+        feed.set(438_34076400, block.timestamp);
+        (p,) = registry.referencePrice(NVDA);
+        assertApproxEqAbs(p, 219e18, 1e12);
+
+        // a token reporting no multiplier cannot be priced per share
+        nvdaB.setMultiplier(0);
+        (p, at) = registry.referencePrice(NVDA);
+        assertEq(p, 0);
+        assertEq(at, 0);
+    }
+
+    function test_setTokenPriceFeed_guards() public {
+        MockAggregator feed = new MockAggregator(8, 219_17038200, block.timestamp);
+        vm.expectRevert();
+        registry.setTokenPriceFeed(NVDA, address(feed), address(nvdaB)); // admin only
+        vm.startPrank(admin);
+        vm.expectRevert(StockRegistry.ZeroAddress.selector);
+        registry.setTokenPriceFeed(NVDA, address(0), address(nvdaB));
+        // the token must be a representation of this underlying, not of another one and not a stranger
+        vm.expectRevert(abi.encodeWithSelector(StockRegistry.UnknownRepresentation.selector, address(aaplB)));
+        registry.setTokenPriceFeed(NVDA, address(feed), address(aaplB));
+        vm.expectRevert(abi.encodeWithSelector(StockRegistry.UnknownRepresentation.selector, address(this)));
+        registry.setTokenPriceFeed(NVDA, address(feed), address(this));
+
+        registry.setTokenPriceFeed(NVDA, address(feed), address(nvdaB));
+        // switching to a per-share feed drops the token, so the answer is no longer divided
+        registry.setPriceFeed(NVDA, address(feed));
+        vm.stopPrank();
+        assertEq(registry.priceFeedToken(NVDA), address(0));
+        (uint256 p,) = registry.referencePrice(NVDA);
+        assertEq(p, uint256(219_17038200) * 1e10);
+    }
+
     function test_setPriceLimits() public {
         vm.startPrank(admin);
         vm.expectRevert(StockRegistry.BadLimits.selector);
