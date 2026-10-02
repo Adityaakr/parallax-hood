@@ -1,11 +1,10 @@
 # Two services from this repository, both built from a Dockerfile:
 #
-#   resolver  RAILWAY_DOCKERFILE_PATH=Dockerfile      PROCESS=resolver   volume at /data
-#   web       RAILWAY_DOCKERFILE_PATH=Dockerfile.web                     no volume
+#   resolver  RAILWAY_DOCKERFILE_PATH=Dockerfile      PROCESS=resolver   CHAIN_ID=46630   volume at /data
+#   web       RAILWAY_DOCKERFILE_PATH=Dockerfile.web  NEXT_PUBLIC_RESOLVER_URL=<resolver url>  NEXT_PUBLIC_DEFAULT_CHAIN=46630
 #
-# (keeper and mcp are the same image as the resolver with PROCESS=keeper | mcp.)
+# The MCP server and the health monitor are the resolver's image with PROCESS=mcp or PROCESS=monitor.
 # Set RAILWAY_DOCKERFILE_PATH as a service variable, or pick the file under Settings -> Build.
-# Everything each one needs is in docs/deploy.md.
 [build]
 builder = "DOCKERFILE"
 [deploy]

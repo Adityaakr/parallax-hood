@@ -16,4 +16,3 @@ contracts/broadcast
 *.db-shm
 .env
 .env.*
-agent/.studio
