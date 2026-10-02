@@ -138,6 +138,21 @@ in Chromium with an injected test wallet: eligibility gate, network label, a 100
 deposit, an in-kind redemption, then the portfolio and activity pages, with balances checked on chain after
 each step.
 
+The full stack on a fork (`pnpm fork:up`, resolver on chain 31337, MCP server with an agent key), recorded
+2 October 2026 at block 77,980,551, with the resolver building every leg and the contracts executing them
+against the real pools:
+
+```
+resolve NVDA 200 USDG     uniswap-v3:100>3000 (USDG to WETH to NVDA), +32 bps vs Chainlink, simulation ok
+index-mint pxMAG7         PASS, paid 100.84 USDG for 1 unit, backing 1.0001 on the tightest constituent
+index-mint pxAI           PASS, paid 100.87 USDG for 1 unit
+agent buy 50 USDG NVDA    success through AgentMandate: owner +0.215390 NVDA, agent holds 0 NVDA and 0 USDG
+agent mint 0.5 pxMAG7     success, units delivered to the owner
+agent buy 120 USDG        refused: exceeds per-tx cap 100
+agent buy AAPL            refused: AAPL is not on this mandate's allowlist
+agent buy 60 USDG         refused: exceeds remaining daily cap 49.32754
+```
+
 Fuzzing beyond Foundry: `contracts/medusa.json` and `contracts/echidna.yaml` drive the harness in
 `contracts/test/fizz` (properties in [contracts/PROPERTIES.md](contracts/PROPERTIES.md)).
 
