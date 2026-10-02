@@ -100,7 +100,9 @@ export class Resolver {
   /** What the transaction costs in USD (1e18-scaled) at the current gas price, for `legs` swap legs. */
   async gasUsd(legs = 1): Promise<bigint> {
     try {
-      const gasPrice = await this.chain.client.getGasPrice();
+      // Robinhood Chain orders first come, first served: there is no priority fee, so the base fee is the price.
+      // A local anvil adds a suggested tip to eth_gasPrice that the real chain would never charge.
+      const gasPrice = (await this.chain.client.getBlock()).baseFeePerGas ?? (await this.chain.client.getGasPrice());
       const units = 150_000n + 120_000n * BigInt(legs);
       // a mock chain has no ETH market; $3,000 is a round placeholder that only ever prices mock gas
       const ethUsd = this.chain.isMocks ? 3_000n * WAD : await this.ethUsdPrice();

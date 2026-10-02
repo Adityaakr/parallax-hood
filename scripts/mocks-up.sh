@@ -12,7 +12,8 @@ export FEE_RECIPIENT="${FEE_RECIPIENT:-0xa0Ee7A142d267C1f36714E4a8F75612F20a7972
 DEPLOYER="$(cast wallet address --private-key "$DEPLOYER_PRIVATE_KEY")"
 mkdir -p "$ROOT/.fork"
 if ! curl -s -X POST "$RPC" -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' >/dev/null 2>&1; then
-  nohup anvil --chain-id 1337 --port "$PORT" --silent > "$ROOT/.fork/anvil-mocks.log" 2>&1 &
+  # base fee as measured on Robinhood Chain (about 0.035 gwei), so gas costs in quotes look like the real chain's
+  nohup anvil --chain-id 1337 --port "$PORT" --block-base-fee-per-gas 35000000 --silent > "$ROOT/.fork/anvil-mocks.log" 2>&1 &
   for i in $(seq 1 20); do sleep 0.5; curl -s -X POST "$RPC" -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' >/dev/null 2>&1 && break; done
 fi
 cast rpc anvil_setBalance "$DEPLOYER" 0x21E19E0C9BAB2400000 -r "$RPC" >/dev/null
