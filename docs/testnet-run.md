@@ -4,12 +4,15 @@ Robinhood Chain Testnet, chain id 46630. Deployed on 2 October 2026 at block 127
 `scripts/testnet-up.sh` from `0x9EBD65F44d6b27ed73B8F8Ab68B24A99E22b8Bdb`, a throwaway key that holds test funds only. The record
 is `contracts/deployments/46630.json`.
 
-**Everything a trade touches here is a mock**: the stock tokens, USDG, the swap venue and the reference prices.
+**Everything a trade touches here is a stand-in**: the stock tokens, USDG and the swap venue are mocks.
 The testnet has no Uniswap deployment and no Chainlink feeds, and five of the seven stocks do not exist on it
-(`docs/addresses.md`, section 7). Each mock stock token carries the multiplier its mainnet token had, and is
-priced at the Chainlink answer its mainnet token had, at block 77,991,064 of chain 4663. Those prices are a
-snapshot and do not move. What this deployment shows is that the contracts enforce what they say on the real
-chain's EVM. It shows nothing about real liquidity; the fork test and the fork run in the README cover that.
+(`docs/addresses.md`, section 7). Each mock stock token was deployed with the multiplier its mainnet token had
+and priced at the Chainlink answer its mainnet token had, at block 77,991,064 of chain 4663. Since the same
+day a mirror keeps those numbers on mainnet's live values (the pool price, the Chainlink reference and the
+multiplier; docs/decisions.md, D14), so the second run below traded at the real market's prices. What this
+deployment shows is that the contracts enforce what they say on the real chain's EVM. It shows nothing about
+real liquidity: the test venue fills any size at one price. The fork test and the fork run in the README
+cover liquidity.
 
 ## Addresses
 
@@ -78,3 +81,36 @@ To repeat it, with the keys in `.env` and a resolver running on chain 46630:
 set -a; . ./.env; set +a
 CHAIN_ID=46630 RESOLVER=http://127.0.0.1:4100 pnpm --filter @parallax-hood/scripts e2e:flow
 ```
+
+## The same flow at mainnet's live prices
+
+Run on 2 October 2026 at 16:05 UTC with the resolver started by `pnpm testnet:dev`. Before it, the mirror's first
+pass sent 14 transactions (a venue price and a reference price for each of the seven stocks; the multipliers
+already matched) and left every stock at 0 bps from mainnet, for 0.0000062 test ETH. A few minutes before the
+run the reference for NVDA was mainnet's Chainlink answer, 234.89 USD per share, and Robinhood's own quote was
+235.55 bid, 235.56 ask.
+
+Owner `0x9EBD65F44d6b27ed73B8F8Ab68B24A99E22b8Bdb`, agent `0xeC3ff9438700683f277CE3F50848D377d8d54A53`, mandate 2.
+
+| Who | Step | Result | Transaction |
+|---|---|---|---|
+| owner | buy 100 USDG of NVDA | 0.423438 NVDA for 100.5 USDG, fee included, via mock | [`0xa03b0aec…`](https://explorer.testnet.chain.robinhood.com/tx/0xa03b0aece35d77d7f974d0873fb944657e2f45b56b972f708393b2797c3a87bc) |
+| owner | deposit 200 USDG into pxMAG7 | 1.9178 units for 194.95 USDG, 7 stocks bought in one transaction | [`0xd6e3cd69…`](https://explorer.testnet.chain.robinhood.com/tx/0xd6e3cd69c007fe9001bb33c48c9196a39e0407050d14dec8688de56bfa3eeaf1) |
+| owner | vault backing after the deposit | every constituent backed, tightest ratio 1.0031 | none sent |
+| owner | redeem 0.5 units to USDG | 50.72 USDG received, net of the fee | [`0xb4d35fb6…`](https://explorer.testnet.chain.robinhood.com/tx/0xb4d35fb6bf23d7fbe7844c84ef3547da01aeb72651fb977c9a57541031ca2318) |
+| owner | redeem 0.25 units in kind | 7 stock tokens returned to the wallet, no venue and no price feed involved | [`0x8682349b…`](https://explorer.testnet.chain.robinhood.com/tx/0x8682349b4a4741f5c1b7790d7fe986d254e0671394b3145cf8049c5b8d9f5f76) |
+| owner | create a mandate for the agent | 100 USDG per trade, 150 per day, NVDA and pxMAG7 only, 300 bps floor, 7 days | [`0x45cfad6f…`](https://explorer.testnet.chain.robinhood.com/tx/0x45cfad6f206d89a7132a533eb61d9119dbbbef74647bf59d4ed302efc8dad736) |
+| agent | get_network | Robinhood Chain Testnet (testnet); mocked: stock tokens, USDG, swap venue | none sent |
+| agent | buy 50 USDG of NVDA under the mandate | owner received 0.211719 NVDA; agent holds 0 NVDA and 0 USDG | [`0xb1e11c13…`](https://explorer.testnet.chain.robinhood.com/tx/0xb1e11c13bae84f1bfe31ccd063469debf78b359f58e01633a3f8d8df29b685c1) |
+| agent | mint 0.4 pxMAG7 under the mandate | owner received 0.4 units | [`0x83a5df69…`](https://explorer.testnet.chain.robinhood.com/tx/0x83a5df69c86c299e8d47fe73027406477c5f6476473e2d5ea7c5fe3a31db9efc) |
+| agent | ask for 120 USDG of NVDA | refused: 120 USDG exceeds per-tx cap 100; 120 USDG exceeds remaining daily cap 58.885161 | none sent |
+| agent | ask for 10 USDG of AAPL | refused: AAPL is not on this mandate's allowlist | none sent |
+| agent | ask for 70 USDG of NVDA | refused: 70 USDG exceeds remaining daily cap 58.885161 | none sent |
+| agent | call AgentMandate directly for 101 USDG | contract reverts: PerTxCapExceeded(101000000, 100000000) | none sent |
+| agent | call AgentMandate directly for AAPL | contract reverts: UnderlyingNotAllowed(0x4141504c00000000000000000000000000000000000000000000000000000000) | none sent |
+| agent | send the 101 USDG call anyway | transaction reverted on chain, nothing moved | [`0xa9c9f878…`](https://explorer.testnet.chain.robinhood.com/tx/0xa9c9f878d6ca492a088d3fa539deb3174d35c6e553fdec097d4d64a92fe8582b) |
+| owner | revoke the mandate | one transaction | [`0x549e2f3f…`](https://explorer.testnet.chain.robinhood.com/tx/0x549e2f3f86896a9b6a32c740bf97e5147901ba5b9865448f15a4edb7ea7df7b7) |
+| agent | ask for 5 USDG of NVDA after revocation | refused: mandate revoked; 5 USDG exceeds remaining daily cap 0 | none sent |
+
+`GET /mirror` on the resolver lists, per stock, mainnet's value, the testnet's value, the drift and the
+transactions of the last pass.

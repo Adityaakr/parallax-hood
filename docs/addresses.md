@@ -206,6 +206,18 @@ So the testnet deployment mocks, and labels as mocked in every API response and 
 | Stock tokens | `MockStockToken`, one per stock, carrying its mainnet token's multiplier | five of the seven do not exist on testnet, and the faucet's supply cannot seed a venue |
 | USDG | `MockUSDG`, 6 decimals | the Paxos faucet gives about 100 USDG a day per wallet, not enough to fund a venue's sell side |
 | Swap venue | `MockSwapTarget` | no Uniswap on testnet |
-| Reference prices | posted once from the mainnet Chainlink answers at generation time | no feeds on testnet |
+| Reference prices | posted from the mainnet Chainlink answers: once at deploy time, and continuously while the mirror runs (docs/decisions.md, D14) | no feeds on testnet |
 
 Deployed addresses are in `contracts/deployments/46630.json` and the README once the deployment is run.
+
+## 8. Robinhood's Stock Token API
+
+Source: https://docs.robinhood.com/chain/stock-token-apis (linked from the Stock Tokens page of the chain docs).
+Base URL `https://api.robinhood.com/rhj`, read-only, no key: `/assets`, `/prices/{symbol}`, `/corporate-actions`.
+
+Check, 2 October 2026: for each of the seven tickers the `contractAddress` the API lists on `chainId` 4663 equals
+the token in section 3, and `currentMultiplier` equals the token's `uiMultiplier()` read on chain at the same
+time. The resolver repeats the address comparison on every read and drops a record that does not match
+(`Resolver.issuerView`). The live `/assets` response carries `tradingCapabilities` as
+`{market, extended, overnight} x {whole, fractional}`, which is the shape parsed; trimmed copies of all three
+responses are in `apps/resolver/test/fixtures/robinhood/`, used by tests only.

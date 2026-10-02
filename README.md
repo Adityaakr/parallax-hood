@@ -41,15 +41,26 @@ Three things follow from that, and Parallax does each one on chain:
 |---|---|---|---|
 | Stock tokens | real, verified ([addresses](docs/addresses.md)) | **mock** (`MockStockToken`) | fork: real, mocks chain: mock |
 | USDG | real, 6 decimals | **mock** (`MockUSDG`, 6 decimals) | fork: real, mocks chain: mock |
-| Swap venue | Uniswap v3 SwapRouter02 | **mock** (`MockSwapTarget`) | fork: real pools, mocks chain: mock |
-| Reference price | Chainlink feeds | **snapshot** of the mainnet feeds, posted once | fork: real feeds, mocks chain: snapshot |
+| Swap venue | Uniswap v3 SwapRouter02 | **mock** (`MockSwapTarget`), kept on the mainnet pools' live price by the mirror | fork: real pools, mocks chain: mock |
+| Reference price | Chainlink feeds | the mainnet Chainlink answer, read live and mirrored into the test registry | fork: real feeds, mocks chain: snapshot |
+| Multipliers | each token's `uiMultiplier()` | mirrored from the mainnet tokens, scheduled changes included | fork: real, mocks chain: snapshot |
+| Pool depth | Uniswap v3 pool balances | read live from the mainnet pools | fork: real, mocks chain: none |
+| Issuer quotes, sessions, corporate actions | Robinhood's Stock Token API | Robinhood's Stock Token API, for the mainnet tokens | fork: yes, mocks chain: off |
 | Parallax contracts | not deployed (needs approval) | deployed, addresses below | deployed by `pnpm mocks:up` / `pnpm fork:up` |
 
 The testnet has no Uniswap deployment and no Chainlink feeds, and five of the seven stocks do not exist there, so
 the testnet deployment cannot use real ones ([details](docs/addresses.md#7-testnet-what-exists-and-what-parallax-mocks)).
 The real tokens, feeds and pools are exercised by the fork test and by `pnpm fork:up`. The resolver's `/health`
-returns a `label` naming the network and listing what is mocked; the MCP server's `get_network` returns the same;
-the app shows it on every screen.
+returns a `label` naming the network and listing what is mocked and what is read live; the MCP server's
+`get_network` returns the same; the app shows it on every screen.
+
+The numbers on the testnet are the real market's all the same. With `pnpm testnet:dev` the resolver reads every
+reference price, multiplier and pool depth from Robinhood Chain mainnet, reads the issuer's own bid, ask, trading
+sessions and corporate actions from Robinhood's Stock Token API, and runs a mirror that copies mainnet's pool
+prices, Chainlink references and multipliers onto the test venue, the test registry and the test tokens as they
+move (D13 and D14 in [docs/decisions.md](docs/decisions.md)). `GET /mirror` shows each stock's mainnet value
+beside the testnet's and the transactions the last run sent. What stays a stand-in is the tokens themselves and
+the venue's depth: the test venue fills any size at mainnet's pool price, with no price impact.
 
 Mainnet quotes work today without any deployment: run the resolver with `CHAIN_ID=4663` and it quotes the real
 pools against the real feeds, and returns no transaction.
@@ -97,6 +108,15 @@ Against the real market, quote-only (no key, nothing deployed):
 ```bash
 CHAIN_ID=4663 pnpm --filter @parallax-hood/resolver dev
 curl -s -X POST localhost:4100/resolve -H 'content-type: application/json' -d '{"ticker":"NVDA","usdAmount":"1000"}'
+```
+
+On the testnet deployment, at mainnet's live prices (needs `.env` with the testnet deployer key, which the
+mirror signs with; without a key the prices are still read live but the test venue is not re-priced):
+
+```bash
+pnpm testnet:dev                                           # resolver on :4100, chain 46630, hybrid + mirror
+NEXT_PUBLIC_RESOLVER_URL=http://127.0.0.1:4100 NEXT_PUBLIC_DEFAULT_CHAIN=46630 pnpm --filter @parallax-hood/web dev
+curl -s localhost:4100/mirror                              # mainnet value, testnet value and drift per stock
 ```
 
 Against a fork of mainnet, with the real tokens, feeds and pools and Parallax deployed on top:

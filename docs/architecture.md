@@ -56,6 +56,9 @@ from the chain (D3, D6).
   caller's policy, builds legs and an unsigned transaction, simulates it, and stores the scoring record. It holds
   no signing key for user funds. `POST /faucet` exists only on the local chains and, when `FAUCET_PRIVATE_KEY`
   is set, on the testnet; it is not registered on mainnet.
+  It also reads Robinhood's Stock Token API for the issuer's quote, sessions, halt flag and corporate actions
+  (D13), display only. On a hybrid test network with `MIRROR_PRIVATE_KEY` set it runs the mirror (D14), the one
+  place the resolver signs anything besides the faucet: test contracts only, never on mainnet or a fork.
 - **SQLite** (`node:sqlite`, one file per chain id). Tables: `quotes` (scoring records by `quoteHash`),
   `receipts` (indexed `RouteReceipt` logs), `rebalances` (indexed `Migrated` logs), `chainlink_rounds` and
   `market_bars` (history caches), `kv` (indexer cursor).
@@ -216,14 +219,16 @@ path is kept and tested with two mock issuers (D9).
 | Share ratio | the token's `uiMultiplier()` on chain, read through `StockRegistry.ratioOf` | `ratioSource: "ERC8056"` |
 | Scheduled ratio change | the token's `newUIMultiplier()` and `effectiveAt()` | `pendingMultiplier` |
 | Reference price | the Chainlink feed through `StockRegistry.referencePrice`, USD per share | `referenceSource: "chainlink:NVDA/USD via registry"`; in quote-only mode the feed is read directly and divided by the multiplier: `"chainlink:NVDA/USD"` |
-| Market status | computed from the 24/5 feed schedule; exchange holidays are not modelled | `market.source: "computed"` |
+| Market status | computed from the 24/5 feed schedule; exchange holidays are not modelled. A trading halt reported by the issuer overrides it | `market.source: "computed"`, or `"issuer"` with `reason: "HALTED"` |
+| Issuer quote, sessions, multiplier | Robinhood's Stock Token API, `/assets` and `/prices/{symbol}`; used only when the token it lists on chain 4663 is the universe's token for that ticker | `issuer` on each stock, `issuer.quote.generatedAt`; `null` when the API does not answer |
+| Corporate actions | Robinhood's Stock Token API, `/corporate-actions` | `GET /stocks/:ticker/corporate-actions`, `actions: null` when the API does not answer |
 | Quotes | Uniswap v3 QuoterV2 on chain | `venue: "uniswap-v3:500"`, or `"uniswap-v3:100>500"` for two hops |
 | Pool depth | token balances of the Uniswap v3 pools (`balanceOf(pool)`) | `poolUsdg`, `poolFees` |
 | Token list, feeds, names and logos | Robinhood's asset list and Chainlink's feed directory, fetched and checked on chain by `scripts/gen-universe.mts`, written to `contracts/script/config/robinhood.json` | `/health` `universe` |
 | NAV per unit | `Σ sharesPerUnit × referencePrice`; display only, never used by a contract | `navSource` |
 | Return figures and price history | Chainlink rounds (`getRoundData`) where the stock has a feed; otherwise daily closes from a public chart endpoint (`MARKET_HISTORY_URL`), otherwise a Uniswap pool's TWAP. Display only. | `source` on the series, `coverageBps` on index returns |
 | Gas cost in USD | block base fee × a gas estimate × ETH price quoted from the WETH/USDG pool | `gasUsd` |
-| Network | resolver configuration and deployment file | `/health` `label`: `name`, `kind`, `chainId`, `explorer`, `mocked` |
+| Network | resolver configuration and deployment file | `/health` `label`: `name`, `kind`, `chainId`, `explorer`, `mocked`, `live`, `liveFrom` |
 
 What is mocked, and how it is labelled:
 
@@ -232,7 +237,7 @@ What is mocked, and how it is labelled:
 | Robinhood Chain (4663) | nothing | `label.mocked: []`, `dataSource: "live"` |
 | Local fork (31337, `pnpm fork:up`) | nothing; real tokens, USDG, pools and feeds at the forked block | `label.kind: "local"`, `label.mocked: []` |
 | Local mocks (1337, `pnpm mocks:up`) | `MockStockToken`, `MockUSDG` (6 decimals), `MockSwapTarget`, and reference prices posted once from the mainnet Chainlink answers recorded in `mocks.json` | `label.mocked: ["stock tokens", "USDG", "swap venue", "reference prices"]`, `dataSource: "fixture"`, `referenceSource: "registry reference price"`, `market.source: "registry"`, `venue: "mock"` |
-| Robinhood Chain Testnet (46630) | the same mock contracts (D7). Quotes are priced against the registry's posted snapshot, the same prices the mock venue trades at; only the price history is read from mainnet's Chainlink rounds, named as mainnet's and display only. `HYBRID_MARKETS=1` switches reference prices and pool depth to mainnet's as well | `label.mocked: ["stock tokens", "USDG", "swap venue", "reference prices"]`; with `HYBRID_MARKETS=1` the last entry is dropped and `/health` `hybrid` names both sides |
+| Robinhood Chain Testnet (46630) | the same mock contracts (D7). As deployed, quotes are priced against the registry's posted snapshot, the prices the mock venue trades at. With `HYBRID_MARKETS=true` and the mirror (`pnpm testnet:dev`, D14) reference prices, multipliers and pool depth are read live from mainnet, the issuer's API is on, and the test venue, registry reference and token multipliers are kept on mainnet's values | snapshot: `label.mocked` lists all four and `label.live: []`. Hybrid: `label.mocked: ["stock tokens", "USDG", "swap venue"]`, `label.live` lists what is read live, `label.liveFrom: "Robinhood Chain mainnet"`, `dataSource: "live"`, `referenceSource: "chainlink:NVDA/USD on Robinhood Chain mainnet"`, `venue: "mock"`, `/health` `mirror` |
 
 The MCP tool `get_network` returns the same label, and the app shows it on every screen. The universe file is
 never edited by hand: `gen-universe.mts` stops on any mismatch between the published lists and the chain.

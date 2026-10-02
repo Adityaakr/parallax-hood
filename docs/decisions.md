@@ -110,8 +110,56 @@ Resolver 4100, MCP 4110, monitor 4120, web 3200, fork anvil 8647, mocks anvil 86
 `agent/` sold Parallax as a paid service through BNB Chain's ERC-8183 and x402 rails. Neither exists on
 Robinhood Chain. The agent path here is the MCP server acting through `AgentMandate`.
 
+### D13. The issuer's own API is a data source, never a price a contract uses
+
+Robinhood publishes a read-only Stock Token API (`https://api.robinhood.com/rhj`, documented at
+docs.robinhood.com/chain/stock-token-apis): asset metadata, live quotes and corporate actions. The resolver reads
+it (`apps/resolver/src/providers/robinhood.ts`) and puts on every stock an `issuer` block: bid and ask per
+underlying share, the day's range and volume, the trading-halt flag, the sessions the stock trades in, the current
+and any pending multiplier. `GET /stocks/:ticker/corporate-actions` lists dividends and splits. Three rules:
+
+- It is display and a halt signal only. The reference a quote is scored against is still the Chainlink feed, and
+  the floor a mandate enforces is still the registry's. An HTTP API cannot be read by a contract, so nothing
+  on chain may depend on it. A halt reported by the issuer marks the market closed, which only ever makes the
+  resolver more conservative.
+- The API is keyed by symbol. Its record is used only when the contract it lists on chain 4663 is the token the
+  universe file holds for that ticker (all seven matched on 2 October 2026); otherwise it is dropped and logged.
+- Requests are memoised to the upstream cache windows (assets 1 minute, prices 15 seconds, corporate actions 1
+  hour). When the API does not answer the block is `null` and the screen says so; nothing is filled in.
+
+`/prices` returns the underlying equity's bid and ask, not multiplier-adjusted, which is already the unit
+Parallax quotes in (USD per share). The Chainlink feed prices the token, multiplier included, and is divided by
+the multiplier (D2). The two are shown side by side and are never mixed.
+
+### D14. The testnet trades at mainnet's live prices, through a mirror
+
+D7 stands: the testnet has no Uniswap and no feeds, so its tokens, USDG and venue are stand-ins. What changed is
+that their numbers are no longer a deploy-time snapshot. With `HYBRID_MARKETS=true` the resolver reads reference
+prices (Chainlink), multipliers and pool depth from Robinhood Chain mainnet, and with `MIRROR_PRIVATE_KEY` it
+runs a mirror (`apps/resolver/src/mirror.ts`) that every two minutes copies onto the test contracts:
+
+| Test contract | Value | Copied from |
+|---|---|---|
+| `MockSwapTarget.price(token)` | USD per token | the midpoint of a 100 USDG round trip through the token's mainnet Uniswap v3 pools |
+| `StockRegistry.postReferencePrice` | USD per share | the token's mainnet Chainlink answer over its mainnet multiplier |
+| `MockStockToken` multiplier, and a scheduled change | shares per token | the mainnet token's `uiMultiplier()`, `newUIMultiplier()`, `effectiveAt()` |
+
+A value is written when it has moved 10 bps (`MIRROR_THRESHOLD_BPS`) and the reference at least every 12 hours.
+The mirror is an ordinary keeper: the registry's step limits apply to it (20 % a day for a price, 5 % for a ratio
+checkpoint), a move past them is reported and left for the admin, and it refuses to run on any network whose
+deployment does not record mock tokens. It shares a send queue with the faucet so one key never races itself.
+`GET /mirror` reports every stock's mainnet value, testnet value, drift and the transactions of the last run;
+`/health` carries a summary and the banner in the app shows when the venue last matched.
+
+Why a mirror rather than only reading mainnet in the resolver: the mandate's floor and the vault's checks run
+against the registry and the venue on chain, so those are the numbers that have to be right, not the ones on a
+screen. What the mirror cannot make real is stated wherever it matters: balances are test tokens, and the test
+venue fills any size at one price, with none of the real pools' price impact. D3 also stands for mainnet: there
+the feeds and multipliers are on chain and nothing is posted by anyone.
+
 ## Status
 
 | Date | State |
 |---|---|
 | 2026-10-02 | Contracts, SDK, quoting client, resolver, MCP server, monitor and web app ported. 139 Foundry tests; the fork test passes 8 of 8 against chain 4663 at block 77,977,963; resolver (27), MCP (8), SDK (17), quoting client (8) and monitor (7) suites pass; the browser journey passes 7 of 7 steps on the local chain. Deployed to Robinhood Chain Testnet (46630) on mocks and the whole flow run there with real transactions (docs/testnet-run.md). Not deployed to mainnet (waiting on approval of docs/mainnet-plan.md). |
+| 2026-10-02 | Live market data everywhere it can be read: Robinhood's Stock Token API on every stock (D13) and the testnet mirrored from mainnet (D14). First mirror run sent 14 transactions and left all seven stocks at 0 bps drift; the 17-step flow was rerun on the testnet at live prices (docs/testnet-run.md). Resolver suite 35 tests (8 new). Mainnet still not deployed. |
