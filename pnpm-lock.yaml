@@ -222,6 +222,25 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@22.20.3)(lightningcss@1.32.0)(supports-color@7.2.0)
 
+  packages/uniswap-client:
+    dependencies:
+      viem:
+        specifier: ^2.21.0
+        version: 2.56.5(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76)
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.7.0
+        version: 22.20.3
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@22.20.3)(lightningcss@1.32.0)(supports-color@7.2.0)
+
   scripts:
     dependencies:
       '@parallax-hood/binance-client':
@@ -8302,7 +8321,7 @@ snapshots:
 
   extension-port-stream@3.0.0:
     dependencies:
-      readable-stream: 3.6.2
+      readable-stream: 4.7.0
       webextension-polyfill: 0.10.0
 
   fast-copy@3.1.0: {}
