@@ -12,7 +12,7 @@ library LegExecutor {
     using SafeERC20 for IERC20;
 
     struct Leg {
-        address target; // allowlisted router (PancakeSwap SmartRouter / v3 SwapRouter)
+        address target; // allowlisted router (Uniswap v3 SwapRouter02)
         bytes data; // calldata for the router; recipient inside must be the executing contract
         address tokenIn;
         uint256 maxIn; // hard cap on tokenIn spent by this leg

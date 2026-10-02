@@ -29,7 +29,7 @@
 > property — both are listed under "Sources".
 
 ## Global Properties
-> Always-on invariants. Implemented as `public function property_*()` in `/Users/adityakrx/parallax/contracts/test/fizz/Properties.sol`.
+> Always-on invariants. Implemented as `public function property_*()` in `test/fizz/Properties.sol`.
 
 - [x] **GL-01** — For each basket constituent, `heldShares(i)` equals an independently recomputed sum, over every registered representation of that constituent's underlying, of `sharesForTokens(rep, balanceOf(rep))`. (Category: HIGH_LEVEL; Guarantee: SHOULD-HOLD — docs/invariants.md B1, `BasketVault.sol:322-328`; Priority: HIGH; Sources: CON-01)
 - [x] **GL-02** — `basket.totalSupply()` equals the sum of `balanceOf` over every actor plus the agent, the mandate contract, the router, and the fee recipient. (Category: HIGH_LEVEL; Guarantee: SHOULD-HOLD — docs/invariants.md B7, OZ ERC-20 mint/burn identity; Priority: HIGH; Sources: CON-02, VS-06, SPEC-01)
