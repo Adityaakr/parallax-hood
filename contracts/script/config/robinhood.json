@@ -7,9 +7,9 @@
     "uniswapV3": "https://docs.uniswap.org/contracts/v3/reference/deployments/"
   },
   "_generated": {
-    "at": "2026-10-02T04:01:40.076Z",
-    "block": 77930881,
-    "blockTime": 1790913699
+    "at": "2026-10-02T05:43:28.352Z",
+    "block": 77991064,
+    "blockTime": 1790919807
   },
   "chainId": 4663,
   "usdg": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
@@ -148,7 +148,7 @@
         {
           "ticker": "MSFT",
           "weightBps": 1429,
-          "sharesPerUnit": "27762269465908006",
+          "sharesPerUnit": "27622859573873610",
           "maxIssuerBps": 10000
         },
         {
@@ -160,7 +160,7 @@
         {
           "ticker": "GOOGL",
           "weightBps": 1429,
-          "sharesPerUnit": "42216715286561218",
+          "sharesPerUnit": "42006305146942569",
           "maxIssuerBps": 10000
         },
         {
@@ -192,13 +192,13 @@
         {
           "ticker": "MSFT",
           "weightBps": 2000,
-          "sharesPerUnit": "38867177252271208",
+          "sharesPerUnit": "38672003403423055",
           "maxIssuerBps": 10000
         },
         {
           "ticker": "GOOGL",
           "weightBps": 2000,
-          "sharesPerUnit": "59103401401185705",
+          "sharesPerUnit": "58808827205719597",
           "maxIssuerBps": 10000
         },
         {

@@ -8,7 +8,7 @@
 #
 # Needs DEPLOYER_PRIVATE_KEY (in .env or the environment) funded with test ETH from
 # https://faucet.testnet.chain.robinhood.com. Writes contracts/deployments/46630.json.
-#   scripts/testnet-up.sh dry    # simulate only
+#   scripts/testnet-up.sh dry    # simulate the first step only (checks the key, the RPC and the config)
 #   scripts/testnet-up.sh        # broadcast
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -27,8 +27,16 @@ mkdir -p deployments
 unset USDG_ADDRESS
 MODE="${1:-send}"
 EXTRA=""
-if [ "$MODE" != "dry" ]; then EXTRA="--broadcast --slow"; rm -f deployments/46630.json; fi
-for S in DeployMocks DeployCore ConfigureRegistry CreateBasket; do
+STEPS="DeployMocks DeployCore ConfigureRegistry CreateBasket"
+if [ "$MODE" != "dry" ]; then
+  EXTRA="--broadcast --slow"; rm -f deployments/46630.json
+else
+  # Each later step reads the addresses the one before it deployed, and a simulation deploys nothing, so only
+  # the first step can be simulated on its own. The file it writes holds simulated addresses and is removed.
+  STEPS="DeployMocks"
+  trap 'rm -f "$ROOT/contracts/deployments/46630.json"' EXIT
+fi
+for S in $STEPS; do
   echo "== $S"
   # shellcheck disable=SC2086
   forge script script/Deploy.s.sol:$S --rpc-url "$RPC" --chain-id 46630 $EXTRA -vv | tail -6
