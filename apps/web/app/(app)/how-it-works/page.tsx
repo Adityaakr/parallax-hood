@@ -67,7 +67,7 @@ function AboutInner() {
         <ul className="mt-2 space-y-2">
           <li><b>Unaudited.</b> <span className="muted">The contracts have tests, fuzzing and invariant suites, and no external audit.</span></li>
           <li><b>Supply caps.</b> <span className="muted">Each index vault starts with a cap on the units it can mint, set by the admin. The cap is checked on mint only, so it never blocks a redemption.</span></li>
-          <li><b>Test networks use mocks.</b> <span className="muted">On the testnet and on local chains the stock tokens, USDG and the swap venue are mocks, and the banner at the top of every page says so.</span></li>
+          <li><b>Test networks use mocks.</b> <span className="muted">On the testnet and on local chains the stock tokens, USDG and the swap venue are mocks, and the banner at the top of every page says so. On the testnet their prices and multipliers are copied from mainnet as they move, and the banner says when they last matched.</span></li>
         </ul>
       </section>
 

@@ -88,9 +88,9 @@ ${SOURCE}`,
 <li><p><strong>Stock tokens</strong>: MockStockToken, one per stock, carrying its mainnet token's multiplier. The faucet's supply could not seed a venue even for the two stocks that exist.</p></li>
 <li><p><strong>USDG</strong>: MockUSDG, with 6 decimals. The Paxos faucet gives about 100 USDG a day per wallet, which is not enough to fund a venue's sell side.</p></li>
 <li><p><strong>Swap venue</strong>: MockSwapTarget, because there is no Uniswap on testnet.</p></li>
-<li><p><strong>Reference prices</strong>: posted once from the mainnet Chainlink answers at generation time, because there are no feeds on testnet.</p></li>
+<li><p><strong>Reference prices</strong>: posted from the mainnet Chainlink answers, because there are no feeds on testnet. A mirror keeps them, the test venue's prices and the test tokens' multipliers on mainnet's live values.</p></li>
 </ul>
-<p>Each of these is labelled as mocked in every API response and on every screen. A testnet run shows that the contracts enforce what they say. It does not show anything about real liquidity or real prices.</p>
+<p>Each of these is labelled as a stand-in in every API response and on every screen, next to the list of what is read live from mainnet. A testnet run shows that the contracts enforce what they say, at the real market's prices. It does not show anything about real liquidity: the test venue fills any size at one price.</p>
 <h3>Where the real ones are exercised</h3>
 <p>The real tokens, feeds and pools are exercised by a fork test against Robinhood Chain mainnet. Parallax is not deployed on mainnet; that deployment is pending, and the code is unaudited.</p>
 ${SOURCE}`,
