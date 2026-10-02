@@ -6,7 +6,8 @@
   "scripts": {
     "gen-universe": "tsx gen-universe.mts",
     "e2e:index-mint": "tsx e2e/index-mint.mts",
-    "capture": "node --no-warnings capture.ts"
+    "capture": "node --no-warnings capture.ts",
+    "e2e:browser": "tsx e2e/browser.mts"
   },
   "dependencies": {
     "@parallax-hood/sdk": "workspace:*",
